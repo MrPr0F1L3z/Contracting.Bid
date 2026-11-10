@@ -17,7 +17,7 @@ import {
 import { ScriptedProvider, textResponse, toolCallResponse } from "../src/models/stub.js";
 import { RecordingProvider, ReplayProvider } from "../src/models/recorder.js";
 import { ModelRouter } from "../src/models/router.js";
-import { parseToolInput, type ChatMessage, type ModelRequest } from "../src/models/types.js";
+import { assistantMessage, parseToolInput, type ChatMessage, type ModelRequest } from "../src/models/types.js";
 
 const convo: ChatMessage[] = [
   { role: "user", content: [{ type: "text", text: "Hire an HR rep" }] },
@@ -44,6 +44,17 @@ describe("Anthropic conversion", () => {
     expect(out[2]?.content).toEqual([
       { type: "tool_result", tool_use_id: "t1", content: "pending approval", is_error: false },
     ]);
+  });
+
+  it("toAnthropicMessages sends Claude's raw assistant content back unchanged", () => {
+    const raw = [{ type: "thinking", thinking: "", signature: "sig" }, { type: "tool_use", id: "t1", name: "x", input: {} }];
+    const out = toAnthropicMessages([
+      { role: "user", content: [{ type: "text", text: "hi" }] },
+      { role: "assistant", content: [{ type: "tool_call", id: "t1", name: "x", input: {} }], raw: { provider: "anthropic", content: raw } },
+      { role: "assistant", content: [{ type: "text", text: "from vllm" }], raw: { provider: "vllm", content: "ignored" } },
+    ]);
+    expect(out[1]).toEqual({ role: "assistant", content: raw });
+    expect(out[2]?.content).toEqual([{ type: "text", text: "from vllm" }]);
   });
 
   it("toAnthropicTools adds the object type", () => {
@@ -89,6 +100,14 @@ describe("AnthropicProvider", () => {
     expect(params.fallbacks).toBe("default");
     expect(params.betas).toEqual(["server-side-fallback-2026-07-01"]);
     expect(params.tools).toHaveLength(1);
+  });
+
+  it("sends refusal fallbacks to Sonnet 5.5 but not to Haiku 5.5, which rejects them", () => {
+    const create = async () => { throw new Error("unused"); };
+    expect(new AnthropicProvider("claude-sonnet-5-5", { create }).buildParams(request).fallbacks).toBe("default");
+    const haiku = new AnthropicProvider("claude-haiku-5-5", { create }).buildParams(request);
+    expect(haiku).not.toHaveProperty("fallbacks");
+    expect(haiku).not.toHaveProperty("betas");
   });
 
   it("omits tools when none are given and calls the injected create", async () => {
@@ -226,5 +245,22 @@ describe("ModelRouter", () => {
   it("throws for a role with no mapping", () => {
     const router = new ModelRouter({ claude: new ScriptedProvider([]), local: new ScriptedProvider([]) }, {} as never);
     expect(() => router.providerFor("hr")).toThrow(/No model/);
+  });
+});
+
+describe("assistantMessage", () => {
+  it("keeps text, tool calls and the provider's raw content", () => {
+    const r = { ...toolCallResponse("propose_hire", { role: "hr" }, "c1"), text: "Hiring HR.", raw: [{ type: "thinking" }] };
+    expect(assistantMessage(r, "anthropic")).toEqual({
+      role: "assistant",
+      content: [
+        { type: "text", text: "Hiring HR." },
+        { type: "tool_call", id: "c1", name: "propose_hire", input: { role: "hr" } },
+      ],
+      raw: { provider: "anthropic", content: [{ type: "thinking" }] },
+    });
+  });
+  it("leaves raw off when the provider gave none", () => {
+    expect(assistantMessage(textResponse("ok"), "stub")).toEqual({ role: "assistant", content: [{ type: "text", text: "ok" }] });
   });
 });

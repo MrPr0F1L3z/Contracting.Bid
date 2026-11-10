@@ -1,4 +1,4 @@
-import { DEFAULT_CLAUDE_MODEL } from "../models/anthropic.js";
+import { DEFAULT_CLAUDE_MODEL, DEFAULT_CLAUDE_WORKER_MODEL } from "../models/anthropic.js";
 
 export interface GpuHook {
   pause: string;
@@ -7,6 +7,8 @@ export interface GpuHook {
 
 export interface AppConfig {
   claudeModel: string;
+  /** Claude model for non-executive roles in the cloud profile. */
+  claudeWorkerModel: string;
   vllmBaseUrl: string;
   vllmApiKey: string;
   vllmModel: string;
@@ -33,6 +35,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   }
   return {
     claudeModel: env.CLAUDE_MODEL || DEFAULT_CLAUDE_MODEL,
+    claudeWorkerModel: env.CLAUDE_WORKER_MODEL || DEFAULT_CLAUDE_WORKER_MODEL,
     vllmBaseUrl: env.VLLM_BASE_URL || "http://localhost:8001/v1",
     vllmApiKey: env.VLLM_API_KEY || "not-needed",
     vllmModel: env.VLLM_MODEL || "qwen3.8-27b-abliterated",

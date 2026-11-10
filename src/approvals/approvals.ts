@@ -34,17 +34,30 @@ export class ApprovalQueue {
 
   constructor(private readonly autoApprove: ReadonlySet<Gate> = new Set()) {}
 
-  request(input: { gate: Gate; requestedBy: string; summary: string; amountUsd?: number }): ApprovalRequest {
-    if (input.amountUsd !== undefined && !(input.amountUsd >= 0)) {
-      throw new Error(`Invalid amount ${input.amountUsd}`);
+  /**
+   * Records a request. It is approved at once, and flagged, when its gate is
+   * on auto-approve or the caller passes `autoApproveReason` for a case the
+   * owner has ruled automatic (such as the initial hires).
+   */
+  request(input: {
+    gate: Gate;
+    requestedBy: string;
+    summary: string;
+    amountUsd?: number;
+    autoApproveReason?: string;
+  }): ApprovalRequest {
+    const { autoApproveReason, ...fields } = input;
+    if (fields.amountUsd !== undefined && !(fields.amountUsd >= 0)) {
+      throw new Error(`Invalid amount ${fields.amountUsd}`);
     }
-    const auto = this.autoApprove.has(input.gate);
+    const auto = autoApproveReason !== undefined || this.autoApprove.has(fields.gate);
+    const reason = autoApproveReason ?? "Gate set to auto-approve for this simulation";
     const req: ApprovalRequest = {
-      ...input,
+      ...fields,
       id: this.requests.length + 1,
       status: auto ? "approved" : "pending",
       autoApproved: auto,
-      ...(auto ? { decidedBy: "auto", reason: "Gate set to auto-approve for this simulation" } : {}),
+      ...(auto ? { decidedBy: "auto", reason } : {}),
     };
     this.requests.push(req);
     return req;
