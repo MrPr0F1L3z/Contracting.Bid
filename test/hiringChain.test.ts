@@ -80,9 +80,9 @@ describe("pmRequestFromPresident", () => {
   it("names the President, the need and the approved budget", () => {
     expect(pmRequestFromPresident(1, 2).split("\n")).toEqual([
       "Written request from the President (agent #1):",
-      "Hire a Project Manager now.",
+      "Hire a Project Manager now, and no other roles.",
       "Business need: before we bid, someone must be ready to run each awarded job from kickoff to closeout.",
-      "Approved budget: up to $2.",
+      "Approved budget: up to $2 per hire.",
     ]);
   });
 });

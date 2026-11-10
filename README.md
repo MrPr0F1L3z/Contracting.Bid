@@ -69,6 +69,18 @@ pnpm sim bench --runs 3            # 3 runs of each profile, alternating, then a
 
 The President hires an HR rep, and HR hires a Project Manager. Both hires are automatic. Any other hire an agent proposes asks you in the terminal (`y` approves; anything else rejects, and your text is the reason). A hybrid run checks vLLM first (see above). A real run needs `ANTHROPIC_API_KEY`, and is capped at `RUN_BUDGET_USD` (default $5) of Claude spend. Each run writes a JSON report to `runs/`, including every event and the wall-clock time of each task. A benchmark declines any hire beyond the automatic two, so every run does the same work.
 
+## Run a bid
+
+```bash
+pnpm sim bid --stub                        # dry run on STUB-E02 with scripted models; every gate approved
+pnpm sim bid                               # cloud: a job picked by seed; you approve each gate in the terminal
+pnpm sim bid --complexity moderate         # pick only among moderate jobs
+pnpm sim bid --job STUB-C01 --seed 42      # a given job; the same seed replays the same market and competitors
+pnpm sim bid --auto-approve                # approve every gate without asking (simulation only)
+```
+
+After the two automatic hires, the President decides whether to pursue the job. If you approve, HR hires an Estimator and a Procurement agent (you approve each hire), the Estimator prices each trade, Procurement gets and selects subcontractor quotes, and the PM sets the bid price, which you approve before it goes to the simulated contracting officer. The award goes to the lowest responsive bid; a bid with no selected quote for a trade the job needs is not responsive. The report shows the margin over the selected quotes, and the terminal flags a bid below cost. The run's seed draws its real-world problems; in this slice, `quote-expired` makes one trade's sub re-quote 8–15% higher.
+
 ## Tests
 
 Every function has unit tests. Tests use scripted stub models and saved fixtures, so they never call Claude, vLLM or SAM.gov and cost nothing.

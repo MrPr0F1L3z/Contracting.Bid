@@ -7,7 +7,6 @@ import { loadConfig } from "../src/config/config.js";
 import { stubHiringProviders } from "../src/sim/stubHiring.js";
 import { ScriptedProvider, textResponse } from "../src/models/stub.js";
 import type { ApprovalRequest } from "../src/approvals/approvals.js";
-import type { AgentRecord } from "../src/agents/registry.js";
 import type { HiringReport } from "../src/sim/hiringChain.js";
 import type { ProfileSummary } from "../src/sim/bench.js";
 import { startFakeVllm } from "./fakeVllm.js";
@@ -36,19 +35,20 @@ describe("parseSimArgs", () => {
 });
 
 describe("approvers", () => {
-  const req = { id: 3, summary: "Hire bookkeeper" } as ApprovalRequest;
-  const rec = { role: "bookkeeper", budgetUsd: 1 } as AgentRecord;
+  const req = { id: 3, gate: "hire_agent", requestedBy: "hr#2", amountUsd: 1, summary: "Hire bookkeeper" } as ApprovalRequest;
   it("terminalApprover approves on y or yes, in any case", async () => {
-    for (const a of ["y", "YES", " y "]) expect(await terminalApprover(async () => a)(req, rec)).toEqual({ approve: true });
+    for (const a of ["y", "YES", " y "]) expect(await terminalApprover(async () => a)(req)).toEqual({ approve: true });
   });
   it("terminalApprover rejects otherwise, using the answer as the reason, and shows the hire", async () => {
-    expect(await terminalApprover(async () => "")(req, rec)).toEqual({ approve: false, reason: "Rejected by owner" });
+    expect(await terminalApprover(async () => "")(req)).toEqual({ approve: false, reason: "Rejected by owner" });
     let asked = "";
-    expect(await terminalApprover(async (q) => ((asked = q), "too costly"))(req, rec)).toEqual({ approve: false, reason: "too costly" });
-    expect(asked).toContain("Approve hire #3: bookkeeper, $1 budget?");
+    expect(await terminalApprover(async (q) => ((asked = q), "too costly"))(req)).toEqual({ approve: false, reason: "too costly" });
+    expect(asked).toContain("Approve hire_agent #3 from hr#2, $1?\nHire bookkeeper");
+    await terminalApprover(async (q) => ((asked = q), "y"))({ ...req, amountUsd: undefined });
+    expect(asked).toContain("Approve hire_agent #3 from hr#2?");
   });
   it("benchApprover declines every extra hire", async () => {
-    expect(await benchApprover(req, rec)).toMatchObject({ approve: false });
+    expect(await benchApprover(req)).toMatchObject({ approve: false });
   });
 });
 

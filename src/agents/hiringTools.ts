@@ -10,8 +10,8 @@ export interface ApprovalDecision {
   reason?: string;
 }
 
-/** Asks the owner about a hire. The CLI prompts in the terminal; tests answer directly. */
-export type Approver = (request: ApprovalRequest, proposal: AgentRecord) => Promise<ApprovalDecision>;
+/** Asks the owner to decide a gated request. The CLI prompts in the terminal; tests answer directly. */
+export type Approver = (request: ApprovalRequest) => Promise<ApprovalDecision>;
 
 export interface HiringContext {
   runId: string;
@@ -98,7 +98,7 @@ export function proposeHireTool(hirerId: number, ctx: HiringContext): ToolHandle
       let approved = request.status === "approved";
       let reason = request.reason;
       if (request.status === "pending") {
-        const decision = await ctx.approver(request, proposal);
+        const decision = await ctx.approver(request);
         const decided = ctx.approvals.decide(request.id, decision.approve, "owner", decision.reason);
         approved = decided.status === "approved";
         reason = decided.reason;
