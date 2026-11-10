@@ -6,7 +6,10 @@ import type { SiteProblem, SiteWorld } from "../world/site.js";
 /** What the agents have done so far on one awarded job. */
 export interface JobState {
   contractSigned?: boolean;
+  /** True once every selected subcontract is signed. */
   subcontractsIssued?: boolean;
+  /** Trades whose subcontract the owner has signed. */
+  issuedTrades?: string[];
   /** Change order submissions to the contracting officer, by problem id. */
   changeOrderTries: Record<string, number>;
 }
@@ -45,24 +48,33 @@ export function kickoffTools(c: Company, agent: AgentRecord, site: SiteWorld, st
     {
       definition: {
         name: "issue_subcontracts",
-        description: "Ask the owner to sign every selected subcontract at its quoted price. Needs the prime contract signed first.",
+        description: "Ask the owner to sign the selected subcontracts not yet signed, at their quoted prices. The owner may sign all or only some. Needs the prime contract signed first.",
         inputSchema: { properties: {}, additionalProperties: false },
       },
       async handle() {
         if (!state.contractSigned) return err("Sign the prime contract first.");
         if (state.subcontractsIssued) return err("The subcontracts are already issued.");
-        const subs = [...site.subcontracts.values()];
+        const issued = state.issuedTrades ?? [];
+        const subs = [...site.subcontracts.values()].filter((q) => !issued.includes(q.trade));
         const total = subs.reduce((a, q) => a + q.priceUsd, 0);
         const req = await c.askOwner({
           gate: "sign_commitment",
           requestedBy: actorOf(agent),
-          summary: `Issue ${subs.length} subcontracts for ${job} totaling ${usd(total)}: ${subs.map((q) => `${q.subcontractor} ${usd(q.priceUsd)}`).join("; ")}.`,
+          summary: `Issue ${subs.length} subcontracts for ${job} totaling ${usd(total)}.`,
           amountUsd: total,
+          items: subs.map((q) => ({ id: q.trade, label: `${q.subcontractor} for ${q.trade}`, amountUsd: q.priceUsd })),
         });
         if (req.status !== "approved") return err(`The owner did not sign the subcontracts${req.reason ? `: ${req.reason}` : ""}.`);
-        state.subcontractsIssued = true;
-        c.event("subcontracts_issued", "owner", { noticeId: job, count: subs.length, totalUsd: total });
-        return { content: `The owner signed ${subs.length} subcontracts totaling ${usd(total)}.` };
+        const signed = subs.filter((q) => req.approvedItems?.includes(q.trade) ?? true);
+        state.issuedTrades = [...issued, ...signed.map((q) => q.trade)];
+        const signedUsd = signed.reduce((a, q) => a + q.priceUsd, 0);
+        c.event("subcontracts_issued", "owner", { noticeId: job, trades: signed.map((q) => q.trade), totalUsd: signedUsd });
+        const left = subs.filter((q) => !signed.includes(q));
+        if (left.length === 0) {
+          state.subcontractsIssued = true;
+          return { content: `The owner signed ${signed.length} subcontracts totaling ${usd(signedUsd)}. Every subcontract is signed.` };
+        }
+        return err(`The owner signed ${signed.length} of ${subs.length} subcontracts. Not signed: ${left.map((q) => q.trade).join(", ")}${req.reason ? ` (${req.reason})` : ""}. Ask again for those, or escalate.`);
       },
     },
   ];

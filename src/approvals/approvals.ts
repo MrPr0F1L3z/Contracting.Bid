@@ -7,11 +7,19 @@ export const GATES = [
   "sign_commitment",
   "approve_change_order",
   "release_payment",
+  "submit_invoice",
   "close_project",
 ] as const;
 export type Gate = (typeof GATES)[number];
 
 export type ApprovalStatus = "pending" | "approved" | "rejected";
+
+/** One line of a batch request (a subcontract, a bill) that the owner can approve on its own. */
+export interface ApprovalItem {
+  id: string;
+  label: string;
+  amountUsd?: number;
+}
 
 export interface ApprovalRequest {
   id: number;
@@ -19,6 +27,10 @@ export interface ApprovalRequest {
   requestedBy: string;
   summary: string;
   amountUsd?: number;
+  /** Set for a batch: the owner may approve all of it or only some items. */
+  items?: ApprovalItem[];
+  /** For an approved batch, the item ids the owner approved. */
+  approvedItems?: string[];
   status: ApprovalStatus;
   decidedBy?: string;
   reason?: string;
@@ -44,6 +56,7 @@ export class ApprovalQueue {
     requestedBy: string;
     summary: string;
     amountUsd?: number;
+    items?: ApprovalItem[];
     autoApproveReason?: string;
   }): ApprovalRequest {
     const { autoApproveReason, ...fields } = input;
@@ -58,15 +71,30 @@ export class ApprovalQueue {
       status: auto ? "approved" : "pending",
       autoApproved: auto,
       ...(auto ? { decidedBy: "auto", reason } : {}),
+      ...(auto && fields.items ? { approvedItems: fields.items.map((i) => i.id) } : {}),
     };
     this.requests.push(req);
     return req;
   }
 
-  decide(id: number, approve: boolean, decidedBy: string, reason?: string): ApprovalRequest {
+  /**
+   * Decides a request. For a batch, `items` approves only those item ids;
+   * leaving it out approves every item, and an empty list rejects the batch.
+   */
+  decide(id: number, approve: boolean, decidedBy: string, reason?: string, items?: readonly string[]): ApprovalRequest {
     const req = this.requests.find((r) => r.id === id);
     if (!req) throw new Error(`No approval request ${id}`);
     if (req.status !== "pending") throw new Error(`Approval ${id} is already ${req.status}`);
+    if (items !== undefined) {
+      if (!req.items) throw new Error(`Approval ${id} has no items`);
+      const unknown = items.find((i) => !req.items!.some((x) => x.id === i));
+      if (unknown !== undefined) throw new Error(`Approval ${id} has no item ${unknown}`);
+    }
+    if (approve && req.items) {
+      const chosen = items ?? req.items.map((i) => i.id);
+      if (chosen.length === 0) approve = false;
+      else req.approvedItems = req.items.map((i) => i.id).filter((i) => chosen.includes(i));
+    }
     req.status = approve ? "approved" : "rejected";
     req.decidedBy = decidedBy;
     if (reason !== undefined) req.reason = reason;

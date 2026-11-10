@@ -18,7 +18,7 @@ const company = (approver = async () => ({ approve: true }), claude = new Script
 describe("hireRequestFromPresident", () => {
   it("joins several roles and names the need and budget", () => {
     expect(hireRequestFromPresident(4, ["an Estimator", "a Procurement agent"], "bidding.", 1)).toBe(
-      "Written request from the President (agent #4):\nHire an Estimator and a Procurement agent now, and no other roles.\nBusiness need: bidding.\nApproved budget: up to $1 per hire.",
+      "Written request from the President (agent #4):\nHire an Estimator and a Procurement agent now, and no other roles.\nBusiness need: bidding.\nApproved budget: up to $1 per hire.\nThis request is my approval of these hires and their plan. Submit them now with propose_hire; do not send me a plan to approve first.",
     );
   });
 });

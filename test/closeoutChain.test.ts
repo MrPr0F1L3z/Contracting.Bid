@@ -48,7 +48,7 @@ describe("runCloseoutChain (functional, scripted models)", () => {
     const r = await runCloseoutChain(opts(1, { approver: async (q) => (asked.push(q.gate), { approve: true }) }));
     expect(r.outcome).toBe("closed");
     expect(r.agents.map((a) => a.role)).toContain("bookkeeper");
-    expect(asked.slice(-3)).toEqual(["hire_agent", "release_payment", "close_project"]);
+    expect(asked.slice(-4)).toEqual(["hire_agent", "submit_invoice", "release_payment", "close_project"]);
     expect(r.invoice).toEqual({ amountUsd: r.account!.revenueUsd, rejections: 0 });
     expect(r.bills.every((b) => b.paid)).toBe(true);
     expect(r.payment).toMatchObject({ daysLate: 0, withheldUsd: 0, paidOnDay: 30 });

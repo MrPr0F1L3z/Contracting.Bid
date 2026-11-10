@@ -1,4 +1,4 @@
-import { ApprovalQueue, type ApprovalRequest, type Gate } from "../approvals/approvals.js";
+import { ApprovalQueue, type ApprovalItem, type ApprovalRequest, type Gate } from "../approvals/approvals.js";
 import { listStaffTool, proposeHireTool, type ApprovalDecision, type Approver, type HiringContext } from "../agents/hiringTools.js";
 import { runAgentTask, type TaskResult, type ToolHandler } from "../agents/loop.js";
 import { AgentRegistry, type AgentRecord } from "../agents/registry.js";
@@ -14,7 +14,9 @@ who is legally accountable for the company and approves anything that commits mo
 export const HR_SYSTEM = `You are the HR representative of a general contracting company run entirely by AI agents. \
 You run the hiring pipeline: for each role the company needs, you write the role's standing instructions and \
 propose the hire with the propose_hire tool. The company subcontracts all field work, so roles are office roles: \
-project manager, estimator, procurement, scheduler and bookkeeper. Hire only the roles a written request asks for.`;
+project manager, estimator, procurement, scheduler and bookkeeper. Hire only the roles a written request asks for. \
+A written request from the President is the President's approval of those hires: submit them with propose_hire in \
+the same task. You cannot message the President and wait for a reply, so a plan sent back instead of a hire is never seen.`;
 
 export interface CompanyOptions {
   runId: string;
@@ -65,6 +67,7 @@ export function hireRequestFromPresident(presidentId: number, roles: string[], n
     `Hire ${roles.join(" and ")} now, and no other roles.`,
     `Business need: ${need}`,
     `Approved budget: up to $${budgetUsd} per hire.`,
+    "This request is my approval of these hires and their plan. Submit them now with propose_hire; do not send me a plan to approve first.",
   ].join("\n");
 }
 
@@ -137,13 +140,16 @@ export class Company {
    * Puts a decision in front of the owner through a gate and records it.
    * Returns the decided request.
    */
-  async askOwner(input: { gate: Gate; requestedBy: string; summary: string; amountUsd?: number }): Promise<ApprovalRequest> {
+  async askOwner(input: { gate: Gate; requestedBy: string; summary: string; amountUsd?: number; items?: ApprovalItem[] }): Promise<ApprovalRequest> {
     const request = this.approvals.request(input);
     this.event("approval_requested", input.requestedBy, { approvalId: request.id, gate: input.gate, summary: input.summary });
     if (request.status !== "pending") return request;
     const decision: ApprovalDecision = await this.o.approver(request);
-    const decided = this.approvals.decide(request.id, decision.approve, "owner", decision.reason);
-    this.event("approval_decided", "owner", { approvalId: decided.id, gate: decided.gate, status: decided.status, reason: decided.reason ?? null });
+    const decided = this.approvals.decide(request.id, decision.approve, "owner", decision.reason, decision.items);
+    this.event("approval_decided", "owner", {
+      approvalId: decided.id, gate: decided.gate, status: decided.status, reason: decided.reason ?? null,
+      ...(decided.approvedItems ? { approvedItems: decided.approvedItems } : {}),
+    });
     return decided;
   }
 
@@ -194,7 +200,9 @@ export async function hireInitialStaff(c: Company, president: AgentRecord): Prom
   const presidentResult = await c.runTask(
     president,
     `${PRESIDENT_SYSTEM}\n\nYou have no staff yet. Hire an HR representative, who will run hiring for every other role. \
-Use the propose_hire tool once, with clear standing instructions for HR. When the hire is active, reply with a \
+Use the propose_hire tool once, with clear standing instructions for HR. You will send HR a written request for each \
+later hire, and that request is your approval; HR cannot message you and wait for a reply, so do not tell HR to wait \
+for a further approval. When the hire is active, reply with a \
 one-paragraph summary of what you asked HR to do.`,
     "Hire the company's HR representative now.",
     c.hiringTools(president),

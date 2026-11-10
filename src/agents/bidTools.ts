@@ -170,7 +170,7 @@ export function submitBidTool(c: Company, agent: AgentRecord, world: BidWorld, s
   return {
     definition: {
       name: "submit_bid",
-      description: "Propose the bid price. The owner must approve it before it is submitted to the contracting officer.",
+      description: "Propose the bid price. It may not be below the cost of the selected quotes. The owner must approve it before it is submitted to the contracting officer.",
       inputSchema: {
         properties: {
           price_usd: { type: "number", description: "Total bid price, including overhead and profit." },
@@ -184,6 +184,13 @@ export function submitBidTool(c: Company, agent: AgentRecord, world: BidWorld, s
       const price = input.price_usd;
       if (typeof price !== "number" || !(price > 0)) return err("price_usd must be a positive number");
       if (state.bid?.ownerApproved) return err("A bid was already approved and submitted.");
+      // Owner rule: never take a job at a loss.
+      const cost = [...world.selected().values()].reduce((a, s) => a + s.quote.priceUsd, 0);
+      if (cost === 0) return err("No subcontractor quotes are selected, so the cost is unknown. The company does not bid without them.");
+      if (Math.round(price) < cost) {
+        c.event("bid_refused", actorOf(agent), { priceUsd: Math.round(price), costUsd: cost });
+        return err(`${usd(Math.round(price))} is below the ${usd(cost)} cost of the selected quotes. The company never takes a job at a loss; price at or above cost, or advise no bid.`);
+      }
       const assumptions = typeof input.assumptions === "string" ? input.assumptions : "";
       const req = await c.askOwner({
         gate: "submit_bid",

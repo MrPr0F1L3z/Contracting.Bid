@@ -133,8 +133,19 @@ export function parseSimArgs(argv: string[]): SimArgs {
 export function terminalApprover(ask: (question: string) => Promise<string>): Approver {
   return async (request) => {
     const amount = request.amountUsd === undefined ? "" : `, $${request.amountUsd.toLocaleString("en-US")}`;
-    const answer = (await ask(`\nApprove ${request.gate} #${request.id} from ${request.requestedBy}${amount}?\n${request.summary}\n[y/N, or a reason to reject] `)).trim();
-    return /^y(es)?$/i.test(answer) ? { approve: true } : { approve: false, reason: answer || "Rejected by owner" };
+    const items = request.items ?? [];
+    const lines = items.map((i) => `  ${i.id}: ${i.label}${i.amountUsd === undefined ? "" : `, $${i.amountUsd.toLocaleString("en-US")}`}`);
+    const choices = items.length > 0 ? "[y = approve all, i = choose items, N or a reason to reject]" : "[y/N, or a reason to reject]";
+    const answer = (await ask(`\nApprove ${request.gate} #${request.id} from ${request.requestedBy}${amount}?\n${request.summary}\n${lines.map((l) => `${l}\n`).join("")}${choices} `)).trim();
+    if (/^y(es)?$/i.test(answer)) return { approve: true };
+    if (items.length > 0 && /^i$/i.test(answer)) {
+      const chosen: string[] = [];
+      for (const item of items) {
+        if (/^y(es)?$/i.test((await ask(`  Approve ${item.id} (${item.label})? [y/N] `)).trim())) chosen.push(item.id);
+      }
+      return chosen.length > 0 ? { approve: true, items: chosen } : { approve: false, reason: "No items approved" };
+    }
+    return { approve: false, reason: answer || "Rejected by owner" };
   };
 }
 
@@ -368,7 +379,7 @@ async function runBid(
   deps: SimDeps,
 ): Promise<number> {
   const isJob = args.command === "job" || args.command === "closeout";
-  const stubs = isJob ? stubJobProviders(profile) : stubBidProviders(profile);
+  const stubs = stubJobProviders(profile);
   const providers = args.stub ? stubs : (deps.providers ?? realProviders(config, profile));
   let rl: ReturnType<typeof createInterface> | undefined;
   const approver =

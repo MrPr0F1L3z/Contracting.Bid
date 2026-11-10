@@ -35,8 +35,9 @@ describe("ApprovalQueue", () => {
     expect(() => new ApprovalQueue().request({ gate: "submit_bid", requestedBy: "pm", summary: "x", amountUsd: -1 })).toThrow();
   });
 
-  it("covers all eight gates from the spec", () => {
-    expect(GATES).toHaveLength(8);
+  it("covers the eight gates from the spec plus the final invoice", () => {
+    expect(GATES).toHaveLength(9);
+    expect(GATES).toContain("submit_invoice");
   });
 });
 

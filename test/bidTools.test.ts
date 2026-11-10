@@ -139,8 +139,29 @@ describe("submit_bid", () => {
     expect(asked).toEqual([]);
   });
 
+  const priced = (s: ReturnType<typeof setup>) => {
+    for (const t of s.world.requiredTrades) s.world.select(s.world.quotesFor(t)[0]!.quoteId);
+    return [...s.world.selected().values()].reduce((a, x) => a + x.quote.priceUsd, 0);
+  };
+
+  it("never bids without quotes or below their cost", async () => {
+    const s = setup();
+    const tool = submitBidTool(s.c, s.agent, s.world, s.state);
+    expect(await tool.handle({ price_usd: 50_000 })).toMatchObject({ isError: true, content: expect.stringContaining("No subcontractor quotes are selected") });
+    const cost = priced(s);
+    const res = await tool.handle({ price_usd: cost - 100 });
+    expect(res).toMatchObject({ isError: true });
+    expect(res.content).toBe(`$${(cost - 100).toLocaleString("en-US")} is below the $${cost.toLocaleString("en-US")} cost of the selected quotes. The company never takes a job at a loss; price at or above cost, or advise no bid.`);
+    expect(s.asked).toEqual([]);
+    expect(s.state.bid).toBeUndefined();
+    expect(s.types()).toContain("bid_refused");
+    expect(await tool.handle({ price_usd: cost })).toMatchObject({ content: expect.stringContaining("The owner approved") });
+  });
+
   it("asks the owner with the amount, and blocks a second bid once approved", async () => {
-    const { c, agent, world, state, asked } = setup();
+    const s = setup();
+    const { c, agent, world, state, asked } = s;
+    expect(priced(s)).toBeLessThan(100_000);
     const tool = submitBidTool(c, agent, world, state);
     expect(await tool.handle({ price_usd: 99_999.6, assumptions: "12% markup" })).toEqual({ content: "The owner approved the $100,000 bid. It has been submitted to the contracting officer." });
     expect(asked[0]).toMatchObject({ gate: "submit_bid", amountUsd: 100_000, summary: "Submit a $100,000 bid on STUB-E02. 12% markup" });
@@ -150,7 +171,9 @@ describe("submit_bid", () => {
 
   it("lets the PM revise after the owner rejects a bid", async () => {
     let n = 0;
-    const { c, agent, world, state } = setup(async () => (n++ === 0 ? { approve: false, reason: "too high" } : { approve: true }));
+    const s = setup(async () => (n++ === 0 ? { approve: false, reason: "too high" } : { approve: true }));
+    const { c, agent, world, state } = s;
+    priced(s);
     const tool = submitBidTool(c, agent, world, state);
     expect(await tool.handle({ price_usd: 200_000 })).toEqual({ content: "The owner rejected this bid: too high. You may revise and propose again.", isError: true });
     expect(state.bid).toMatchObject({ priceUsd: 200_000, assumptions: "", ownerApproved: false, ownerReason: "too high" });
