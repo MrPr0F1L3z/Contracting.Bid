@@ -12,8 +12,6 @@ export interface AppConfig {
   vllmModel: string;
   databaseUrl: string;
   runBudgetUsd: number;
-  /** Optional cap on the top of a job's estimated value. */
-  maxJobValueUsd: number | undefined;
   gpuHooks: GpuHook[];
 }
 
@@ -33,7 +31,6 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     vllmModel: env.VLLM_MODEL || "Qwen/Qwen2.5-32B-Instruct-AWQ",
     databaseUrl: env.DATABASE_URL || "postgres://contracting:contracting@localhost:5432/contracting",
     runBudgetUsd: budget,
-    maxJobValueUsd: parseOptionalPositive("MAX_JOB_VALUE_USD", env.MAX_JOB_VALUE_USD),
     gpuHooks: parseGpuHooks(env.GPU_PAUSE_HOOKS),
   };
 }
@@ -61,12 +58,3 @@ export function parseGpuHooks(raw: string | undefined): GpuHook[] {
   });
 }
 
-/** Parses an optional positive number; empty means "not set". */
-export function parseOptionalPositive(name: string, raw: string | undefined): number | undefined {
-  if (raw === undefined || raw.trim() === "") return undefined;
-  const value = Number(raw);
-  if (!Number.isFinite(value) || value <= 0) {
-    throw new Error(`${name} must be a positive number, got "${raw}"`);
-  }
-  return value;
-}

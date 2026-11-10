@@ -20,7 +20,7 @@ The full POC spec lives in the project's Claude Doc, "Contracting.Bid POC: Proce
 | `src/events/` | Append-only event log (in-memory now, Postgres next) |
 | `src/budget/` | Per-call cost and budgets that warn at 80% and stop at 100% |
 | `src/approvals/` | The eight owner approval gates and the approval queue |
-| `src/opportunities/` | The `OpportunitySource` interface, the stub source of made-up solicitations, and the seeded picker with an optional job-size cap |
+| `src/opportunities/` | The `OpportunitySource` interface, the stub source of made-up solicitations (two each at easy, moderate and complex), the seeded picker, and a coverage planner that spreads runs across complexity levels |
 | `src/gpu/` | Pauses the owner's listed GPU processes before a run and always resumes them afterwards |
 | `db/migrations/` | Postgres schema for the data model |
 | `test/` | Unit tests for every function, plus functional tests that apply the schema to an embedded Postgres |

@@ -20,7 +20,16 @@ export interface Opportunity {
   scopeSummary: string;
   /** The government's estimated value range, when the notice gives one. */
   estimatedValueUsd: { min: number; max: number } | null;
+  /**
+   * How hard the job is to run. Stub-only for now; a real source would
+   * have to infer it from trades, phasing and site constraints.
+   */
+  complexity: Complexity | null;
 }
+
+/** Easy: one or two trades. Moderate: several trades, some coordination. Complex: many trades, phasing, special requirements. */
+export const COMPLEXITIES = ["easy", "moderate", "complex"] as const;
+export type Complexity = (typeof COMPLEXITIES)[number];
 
 export interface OpportunitySource {
   readonly name: string;

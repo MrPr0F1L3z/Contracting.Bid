@@ -34,13 +34,13 @@ pnpm check             # typecheck + tests (no keys or GPU needed)
 
 ## GPU sharing
 
-Simulations need the GPU. List the commands that pause and resume your other GPU processes in `GPU_PAUSE_HOOKS`, for example:
+Simulations need the GPU. Ollama and any existing vLLM processes may be stopped for a run. List the commands that stop and restart them in `GPU_PAUSE_HOOKS`. Pausing a process (`docker pause`, `kill -STOP`) keeps its VRAM allocated, so use real stop and start commands, for example:
 
 ```bash
-GPU_PAUSE_HOOKS='[{"pause":"docker pause my-gpu-app","resume":"docker unpause my-gpu-app"}]'
+GPU_PAUSE_HOOKS='[{"pause":"sudo systemctl stop ollama","resume":"sudo systemctl start ollama"},{"pause":"docker stop vllm","resume":"docker start vllm"}]'
 ```
 
-The runner pauses them before a simulation and always resumes them afterwards, even if the run fails. It never kills or removes anything.
+The runner runs the stop commands before a simulation and always runs the start commands afterwards, in reverse order, even if the run fails. It runs only the commands you list.
 
 ## Tests
 
