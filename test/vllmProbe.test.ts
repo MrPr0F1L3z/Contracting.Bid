@@ -6,6 +6,7 @@ import {
   parseLaneUsage,
   readLaneUsage,
   serverRoot,
+  describeError,
   timeRequest,
   tokensPerSecond,
   waitForReady,
@@ -196,5 +197,17 @@ describe("ensureVllm failures", () => {
         waitOptions: { now: () => t, sleep: async (ms) => { t += ms; } },
       }),
     ).rejects.toThrow(/did not come up/);
+  });
+});
+
+describe("describeError", () => {
+  it("adds the network cause code that fetch hides", () => {
+    const err = new TypeError("fetch failed", { cause: { code: "ECONNREFUSED" } });
+    expect(describeError(err)).toBe("TypeError: fetch failed (ECONNREFUSED)");
+  });
+  it("falls back to the cause message, then the plain error", () => {
+    expect(describeError(new Error("x", { cause: new Error("socket hang up") }))).toBe("Error: x (socket hang up)");
+    expect(describeError(new Error("plain"))).toBe("Error: plain");
+    expect(describeError(null)).toBe("null");
   });
 });

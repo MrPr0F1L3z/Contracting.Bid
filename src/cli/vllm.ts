@@ -34,6 +34,7 @@ export async function main(argv: string[], deps: CliDeps = {}): Promise<number> 
       out(`Probe: ${probe.ok ? `${probe.seconds.toFixed(1)}s, ${probe.tokensPerSec.toFixed(1)} tokens/s` : `failed (${probe.error})`}`);
       const verdict = decide(lanes, probe, t);
       out(`Verdict: ${verdict.reuse ? "reuse" : "restart"} (${verdict.reason})`);
+      out(`Server: ${config.vllmBaseUrl}, model ${config.vllmModel}`);
       return 0;
     }
     case "ensure": {

@@ -95,7 +95,7 @@ export async function timeRequest(
     return { ok: true, seconds, completionTokens, tokensPerSec: tokensPerSecond(completionTokens, seconds) };
   } catch (err) {
     const seconds = (now() - start) / 1000;
-    const error = controller.signal.aborted ? `timed out after ${timeoutSec}s` : String(err);
+    const error = controller.signal.aborted ? `timed out after ${timeoutSec}s` : describeError(err);
     return { ok: false, seconds, completionTokens: 0, tokensPerSec: 0, error };
   } finally {
     clearTimeout(timer);
@@ -209,4 +209,12 @@ export async function ensureVllm(opts: EnsureOptions): Promise<EnsureResult> {
   if (!ready) throw new Error(`vLLM did not come up within ${opts.readyTimeoutSec ?? 600}s after "${opts.startCommand}"`);
   log("vLLM is ready");
   return { restarted: true, verdict };
+}
+
+/** Error text with the network cause (for example ECONNREFUSED) that fetch hides. */
+export function describeError(err: unknown): string {
+  const base = String(err);
+  const cause = (err as { cause?: { code?: string; message?: string } } | null)?.cause;
+  const detail = cause?.code ?? cause?.message;
+  return detail ? `${base} (${detail})` : base;
 }

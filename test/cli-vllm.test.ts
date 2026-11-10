@@ -20,6 +20,7 @@ describe("pnpm gpu", () => {
     expect(await main(["check"], { env, out })).toBe(0);
     expect(lines[0]).toBe("Lanes: 1 running, 0 waiting, of 2");
     expect(lines[2]).toMatch(/^Verdict: reuse/);
+    expect(lines[3]).toMatch(/^Server: http:\/\/127\.0\.0\.1:\d+\/v1, model /);
   });
 
   it("check says when metrics are missing and the probe fails", async () => {
