@@ -83,6 +83,7 @@ describe("pmRequestFromPresident", () => {
       "Hire a Project Manager now, and no other roles.",
       "Business need: before we bid, someone must be ready to run each awarded job from kickoff to closeout.",
       "Approved budget: up to $2 per hire.",
+      "This request is my approval of these hires and their plan. Submit them now with propose_hire; do not send me a plan to approve first.",
     ]);
   });
 });
