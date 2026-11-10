@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { createInterface } from "node:readline";
-import { FileUserStore, newTotpSecret, newUser, otpauthUrl, passwordProblem, verifyTotp, hashPassword, type UserStore } from "../dashboard/auth.js";
+import { FileUserStore, USERNAME, newTotpSecret, newUser, otpauthUrl, passwordProblem, verifyTotp, hashPassword, type UserStore } from "../dashboard/auth.js";
 import type { DashboardOptions } from "../dashboard/server.js";
 
 export const DEFAULT_USERS_FILE = "data/dashboard-users.json";
@@ -150,6 +150,10 @@ export async function runUserCommand(argv: string[], deps: UserCommandDeps = {})
       return 0;
     }
     if (action === "add") {
+      if (!USERNAME.test(name!)) {
+        out("A login name is 2-32 lowercase letters, digits, dots, dashes or underscores");
+        return 1;
+      }
       if (existing) {
         out(`${name} already exists. Use passwd or reset-code to change it.`);
         return 1;

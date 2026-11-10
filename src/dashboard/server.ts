@@ -170,19 +170,24 @@ export class DashboardServer {
     }
     const out: RunSummary[] = [];
     for (const f of files.sort().reverse()) {
-      try {
-        out.push(summarize(f, JSON.parse(await readFile(join(this.o.runsDir, f), "utf8")) as Record<string, unknown>));
-      } catch {
-        out.push(summarize(f, {}));
-      }
+      const report = await this.readRun(f);
+      if (report) out.push(summarize(f, report));
     }
     return out;
   }
 
-  async readRun(file: string): Promise<unknown | null> {
+  /**
+   * Reads one run report. Only a plain `*.json` name in the reports folder,
+   * holding an object with a runId, counts: anything else there (such as a
+   * misplaced users file) is never served.
+   */
+  async readRun(file: string): Promise<Record<string, unknown> | null> {
     if (!REPORT_FILE.test(file) || basename(file) !== file) return null;
     try {
-      return JSON.parse(await readFile(join(this.o.runsDir, file), "utf8"));
+      const report = JSON.parse(await readFile(join(this.o.runsDir, file), "utf8")) as unknown;
+      if (typeof report !== "object" || report === null || Array.isArray(report)) return null;
+      if (typeof (report as Record<string, unknown>).runId !== "string") return null;
+      return report as Record<string, unknown>;
     } catch {
       return null;
     }

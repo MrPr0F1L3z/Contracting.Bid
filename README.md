@@ -106,13 +106,21 @@ Some approvals cover several items: all the subcontracts on a job, or a payment 
 
 ## Owner dashboard
 
+First create your login. You need a password of at least 12 characters and an authenticator app on your phone (1Password, Google Authenticator, Authy or similar):
+
+```sh
+pnpm sim user add owner
+```
+
+It shows a secret key (and an `otpauth://` link) to add to the app, then asks for a code from the app to check it worked. Logins are saved in `data/dashboard-users.json`, readable only by you. Use `pnpm sim user passwd NAME` to change a password, `reset-code NAME` for a new phone, `remove NAME` and `list`.
+
 Add `--dashboard` to a `bid`, `job` or `closeout` run to answer approvals in your browser instead of the terminal:
 
 ```sh
 pnpm sim closeout --job STUB-E02 --force-award --dashboard
 ```
 
-The terminal prints a link like `http://127.0.0.1:4100/#token=…`. Open the whole link; the token in it is what lets the page act. The page has three tabs:
+The terminal prints the link, `http://127.0.0.1:4100/` by default. Sign in with your name, password and the current code from your app. The page has three tabs:
 
 - **Approvals:** each pending request, with Approve, Reject and a reason. Batches list their items, with "Approve all" and "Approve checked only".
 - **Live log:** the run's events as they happen.
@@ -120,7 +128,21 @@ The terminal prints a link like `http://127.0.0.1:4100/#token=…`. Open the who
 
 The run waits for you on the page. It closes when the run ends. To browse saved reports afterwards, run `pnpm sim dashboard` (add `--out DIR` if you saved them elsewhere) and press Ctrl+C to stop it. Set `DASHBOARD_PORT` to use a port other than 4100. `--dashboard` does nothing with `--auto-approve` or `--stub`, which approve everything themselves.
 
-The dashboard only listens on your own machine (127.0.0.1). It is not meant to be exposed to a network.
+Five wrong sign-ins lock that name and that address out for 15 minutes. A session ends after an hour without use, or 12 hours after sign-in, and restarting the dashboard signs everyone out.
+
+### Reach the dashboard from other devices
+
+The dashboard listens only on this machine until you set up HTTPS. The simplest way is Caddy, which gets and renews a free Let's Encrypt certificate:
+
+1. Point a domain name (for example `dashboard.example.com`) at your machine's public IP address, with a DNS A record.
+2. Open ports 80 and 443 on your router or firewall and forward them to this machine. Do not open 4100 or 5432.
+3. In `.env`, set `DASHBOARD_DOMAIN=dashboard.example.com` and `DASHBOARD_BEHIND_PROXY=1`.
+4. Start Caddy: `docker compose --profile public up -d caddy`.
+5. Run the sim on this machine as usual, with `--dashboard`, and open `https://dashboard.example.com` on your phone.
+
+The dashboard itself stays on 127.0.0.1; only Caddy faces the internet. `DASHBOARD_BEHIND_PROXY=1` marks the session cookie Secure, turns on HSTS, and takes the visitor's address from Caddy for the lockout.
+
+If you already have a certificate (for example from certbot), the dashboard can serve HTTPS itself instead: set `DASHBOARD_HOST=0.0.0.0`, `DASHBOARD_TLS_CERT` and `DASHBOARD_TLS_KEY`. It refuses to serve plain HTTP on anything but 127.0.0.1.
 
 ## Tests
 

@@ -147,8 +147,10 @@ describe("SessionStore", () => {
     const b = s.create("owner");
     for (let i = 0; i < SESSION_MS / (IDLE_MS / 2); i++) {
       t += IDLE_MS / 2;
-      if (t - b.createdAt <= SESSION_MS) expect(s.touch(b.id)).not.toBeNull();
+      expect(s.touch(b.id)).not.toBeNull();
     }
+    expect(t - b.createdAt).toBe(SESSION_MS);
+    t += 1;
     expect(s.touch(b.id)).toBeNull();
     const c = s.create("owner");
     s.end(c.id);
@@ -169,12 +171,13 @@ describe("LoginLimiter", () => {
     expect(l.lockedFor("ip:1")).toBe(0);
     t = 1000;
     l.fail("ip:1", "user:owner");
-    expect(l.lockedFor("ip:1")).toBe(LOCKOUT_MS);
-    expect(l.lockedFor("ip:2", "user:owner")).toBe(LOCKOUT_MS);
+    // Locked until the oldest of the last MAX_FAILURES failures (at t=0) is forgotten.
+    expect(l.lockedFor("ip:1")).toBe(LOCKOUT_MS - 1000);
+    expect(l.lockedFor("ip:2", "user:owner")).toBe(LOCKOUT_MS - 1000);
     expect(l.lockedFor("ip:2", "user:other")).toBe(0);
+    t = LOCKOUT_MS - 1;
+    expect(l.lockedFor("ip:1")).toBe(1);
     t = LOCKOUT_MS;
-    expect(l.lockedFor("ip:1")).toBe(1000);
-    t = LOCKOUT_MS + 1000;
     expect(l.lockedFor("ip:1")).toBe(0);
   });
   it("clears a key on success", () => {
