@@ -37,9 +37,21 @@ The owner appoints the President. The President hires HR with `propose_hire`, wr
 
 Each agent task runs in `runAgentTask`: call the model, run the tools it asks for, return all results in one message, and repeat until it stops calling tools. Every model call is charged to both the run budget and the agent's own budget, and the loop stops before a call once either is spent. Calls to the local model share a semaphore sized to `VLLM_MAX_LANES`, so extra calls wait in our code instead of queueing inside vLLM.
 
-## Next
+## Bid and award (slice 2)
+
+`Company` (`src/sim/company.ts`) holds one run's registry, approvals, budget, event log and task records; each slice drives it through its part of the job lifecycle. `runBidChain` reuses slice 1's hires, then:
+
+1. Draws the run's problems and picks a job from the seed (or `--job` / `--complexity`), and builds a `BidWorld`.
+2. The President calls `decide_opportunity`. Pursuing goes to the owner (`pursue_opportunity`).
+3. HR receives a written request from the President and hires an Estimator and a Procurement agent. Each hire goes to the owner.
+4. The Estimator calls `submit_estimate` with one line per trade, using the market's trade names.
+5. Procurement calls `request_quotes` and `select_quote` per trade, and `procurement_status` to check for gaps.
+6. The PM gets a bid package (estimate next to the selected quotes) and calls `submit_bid`. The owner approves the price (`submit_bid`) before it is submitted; a rejected price comes back as a tool error so the PM can revise.
+7. The contracting officer awards on lowest price technically acceptable.
+
+`BidWorld` (`src/world/market.ts`) is the simulated outside world for one bid. Each stub job has a hidden list of required trades and cost shares (`JOB_SCOPES`); the true subcontract cost is 75–90% of the government estimate's midpoint. Each trade gets 2–3 quotes at 92–130% of its true cost, and 2–4 competitors bid 108–135% of the total true cost. Every draw uses its own forked RNG stream, so a seed replays the same world regardless of the order agents ask for things.
+
 
 1. Postgres-backed event log and agent records.
-2. Slice 2: bid and award (pursue decision, estimate, vendor quotes, bid submission), with the world simulator's contracting officer and vendors.
-3. Slice 3: execution with injected problems. Slice 4: closeout and AR/AP.
-4. The owner dashboard for approvals and the run log.
+2. Slice 3: execution with injected problems. Slice 4: closeout and AR/AP.
+3. The owner dashboard for approvals and the run log.
