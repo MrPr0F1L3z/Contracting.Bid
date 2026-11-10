@@ -1,0 +1,29 @@
+{
+  "name": "contracting-bid",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A self-managed general contracting company run by AI agents. Sandboxed proof of concept.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@10.28.0",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "pnpm typecheck && pnpm test"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.7.0",
+    "openai": "^7.55.0"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.16",
+    "@types/node": "^22.20.5",
+    "@vitest/coverage-v8": "^5.1.0",
+    "typescript": "~5.9.3",
+    "vitest": "^5.1.0"
+  }
+}

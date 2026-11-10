@@ -1,0 +1,34 @@
+# Runs on the owner's machine. vLLM is NOT in this file: it already runs on
+# the host GPU, and the app reaches it at host.docker.internal:8000.
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: contracting
+      POSTGRES_PASSWORD: contracting
+      POSTGRES_DB: contracting
+    ports:
+      - "5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./db/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U contracting"]
+      interval: 5s
+      retries: 10
+
+  app:
+    build: .
+    env_file:
+      - path: .env
+        required: false
+    depends_on:
+      db:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./runs:/app/runs
+
+volumes:
+  db-data:

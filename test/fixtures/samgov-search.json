@@ -1,0 +1,48 @@
+{
+  "_note": "Made-up records in the SAM.gov v2 response shape, for tests only. Not real listings.",
+  "totalRecords": 4,
+  "limit": 100,
+  "offset": 0,
+  "opportunitiesData": [
+    {
+      "noticeId": "test-0001",
+      "title": "TEST Renovate Building 12 Office Suite",
+      "solicitationNumber": "TEST-SOL-0001",
+      "naicsCode": "236220",
+      "type": "Solicitation",
+      "postedDate": "2026-10-01",
+      "responseDeadLine": "2026-11-30T17:00:00-05:00",
+      "active": "Yes",
+      "typeOfSetAside": "SBA",
+      "typeOfSetAsideDescription": "Total Small Business Set-Aside (FAR 19.5)",
+      "placeOfPerformance": { "state": { "code": "CA" } },
+      "description": "https://api.sam.gov/prod/opportunities/v1/noticedesc?noticeid=test-0001",
+      "uiLink": "https://sam.gov/opp/test-0001/view"
+    },
+    {
+      "noticeId": "test-0002",
+      "title": "TEST Repave Parking Lot",
+      "solicitationNumber": "TEST-SOL-0002",
+      "naicsCode": "237310",
+      "type": "Combined Synopsis/Solicitation",
+      "postedDate": "2026-10-03",
+      "reponseDeadLine": "2026-12-01T12:00:00-05:00",
+      "active": "Yes",
+      "uiLink": "https://sam.gov/opp/test-0002/view"
+    },
+    {
+      "noticeId": "test-0003",
+      "title": "TEST Office Supplies",
+      "naicsCode": "424120",
+      "type": "Solicitation",
+      "active": "Yes"
+    },
+    {
+      "noticeId": "test-0004",
+      "title": "TEST Roof Replacement (sources sought)",
+      "naicsCode": "238160",
+      "type": "Sources Sought",
+      "active": "Yes"
+    }
+  ]
+}
