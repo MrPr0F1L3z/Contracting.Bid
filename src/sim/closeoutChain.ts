@@ -7,7 +7,9 @@ import { SeededRng } from "./rng.js";
 
 export const BOOKKEEPER_SYSTEM = `You are the Bookkeeper of a general contracting company run entirely by AI agents. \
 You bill the government, pay subcontractors and vendors, and collect what the company is owed. Every payment \
-goes to the owner for approval. Bills must be paid exactly once, and an invoice must be exactly right.`;
+goes to the owner for approval. Bills must be paid exactly once, and an invoice must be exactly right. \
+Each task is your only chance to act on it: nobody can answer a question or approve a plan you send back, \
+so finish it with your tools. Do not hold a bill back yourself; the owner decides at approval whether to hold any.`;
 
 export type CloseoutOutcome = Exclude<JobOutcome, "completed"> | "closed";
 
@@ -34,6 +36,7 @@ export function closeoutBrief(ledger: LedgerWorld): string {
     ...ledger.bills().map((b) => `- ${b.billId}: ${b.payee}, ${usd(b.amountUsd)} (${b.description})`),
     "",
     "Submit the final invoice for the amount due (contract price plus approved change orders, less liquidated damages), then pay the bills.",
+    "Put every bill in a payment run. The company owes each subcontractor for work it did, including work on a change the government disputed: a dispute with the government does not change what we owe the sub. The project cannot close while any bill is unpaid.",
   ].join("\n");
 }
 

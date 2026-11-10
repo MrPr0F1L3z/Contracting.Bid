@@ -66,9 +66,9 @@ export interface ProblemOption {
 export interface ScopeChange {
   initiatedBy: "government" | "contractor";
   description: string;
-  /** Hidden: what the change really costs the company. */
+  /** What the change costs the company: the subcontractor's quote for it, shown to the PM. */
   costUsd: number;
-  /** Hidden: how many working days it really adds. */
+  /** How many working days it adds, as the subcontractor quotes them. */
   days: number;
 }
 

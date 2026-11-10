@@ -39,6 +39,7 @@ describe("closeoutBrief", () => {
       "Bills to pay:",
     ]);
     expect(lines.filter((l) => /^- B-\d+: /.test(l))).toHaveLength(2);
+    expect(lines.at(-1)).toContain("a dispute with the government does not change what we owe the sub");
   });
 });
 
