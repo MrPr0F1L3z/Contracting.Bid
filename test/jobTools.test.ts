@@ -103,14 +103,17 @@ describe("problemBrief", () => {
     expect(lines[2]).toMatch(/^- expedite: .*Cost \$[\d,]+, delay 0 working days\.$/);
     expect(lines.at(-1)).toBe("Liquidated damages are $250 per working day past the contract time.");
   });
-  it("asks for a priced change order without showing its true cost", () => {
+  it("asks for a priced change order and gives the sub's quote for it", () => {
     const s = setup(undefined, ["change-order", "hidden-conditions"]);
     const ps = scheduled(s);
     const hidden = ps.find((p) => p.id === "hidden-conditions") as SiteProblem;
     const co = ps.find((p) => p.id === "change-order") as SiteProblem;
     expect(problemBrief(s.site, co)).toContain("The government must pay for directed changes.");
     expect(problemBrief(s.site, hidden)).toContain("This is a differing site condition.");
-    expect(problemBrief(s.site, co)).not.toContain(co.change!.costUsd.toLocaleString("en-US"));
+    const sub = s.site.subcontracts.get(co.trade)!.subcontractor;
+    expect(problemBrief(s.site, co).split("\n")[1]).toBe(
+      `${sub} quotes $${co.change!.costUsd.toLocaleString("en-US")} and ${co.change!.days} working days for the added work.`,
+    );
   });
 });
 
