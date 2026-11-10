@@ -303,6 +303,10 @@ export async function main(argv: string[], deps: SimDeps = {}): Promise<number> 
 
   const env = deps.env ?? process.env;
   const port = Number(env.DASHBOARD_PORT ?? 4100);
+  if (!Number.isInteger(port) || port < 0 || port > 65535) {
+    out(`DASHBOARD_PORT must be a port number, not "${env.DASHBOARD_PORT ?? ""}"`);
+    return 2;
+  }
   if (args.command === "dashboard") {
     const server = new DashboardServer({ runsDir: args.out, port });
     out(`Owner dashboard: ${await server.start()}`);

@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { randomBytes } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import type { ApprovalRequest } from "../approvals/approvals.js";
@@ -196,7 +196,10 @@ export class DashboardServer {
   private authorized(req: IncomingMessage, url: URL): boolean {
     // EventSource cannot set headers, so the live stream takes the token as a query parameter.
     const given = req.headers["x-dashboard-token"] ?? (url.pathname === "/api/stream" ? url.searchParams.get("token") : null);
-    return given === this.token;
+    if (typeof given !== "string") return false;
+    const a = Buffer.from(given);
+    const b = Buffer.from(this.token);
+    return a.length === b.length && timingSafeEqual(a, b);
   }
 
   private async route(req: IncomingMessage, res: ServerResponse): Promise<void> {
