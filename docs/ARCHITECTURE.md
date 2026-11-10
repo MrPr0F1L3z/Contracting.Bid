@@ -19,11 +19,12 @@ The full POC spec lives in the project's Claude Doc, "Contracting.Bid POC: Proce
 | `src/sim/` | Seeded RNG, the simulated clock, the problem catalog, and the hiring chain (slice 1) |
 | `src/events/` | Append-only event log (in-memory now, Postgres next) |
 | `src/budget/` | Per-call cost and budgets that warn at 80% and stop at 100% |
-| `src/approvals/` | The eight owner approval gates and the approval queue |
+| `src/approvals/` | The nine owner approval gates and the approval queue, with batch approvals that can be approved in full or item by item |
 | `src/opportunities/` | The `OpportunitySource` interface, the stub source of made-up solicitations (two each at easy, moderate and complex), the seeded picker, and a coverage planner that spreads runs across complexity levels |
 | `src/agents/` | Agent records and the hiring policy, the agent tool loop (budgets, event logging, Claude's thinking passed back unchanged), and the hiring tools |
 | `src/gpu/` | Pauses the owner's listed GPU processes before a run and always resumes them afterwards; checks vLLM lanes and speed and restarts it when needed |
-| `src/cli/` | `pnpm gpu` (vLLM check, ensure, load test) and `pnpm sim hiring` |
+| `src/dashboard/` | The owner dashboard: a local web page for approvals, the live event log and saved reports |
+| `src/cli/` | `pnpm gpu` (vLLM check, ensure, load test) and `pnpm sim` (hiring, bench, bid, job, closeout, dashboard) |
 | `db/migrations/` | Postgres schema for the data model |
 | `test/` | Unit tests for every function, plus functional tests that apply the schema to an embedded Postgres |
 
@@ -73,7 +74,16 @@ Scripted runs use `ReactiveProvider`, which answers each request from the tools 
 
 Each stage function (`bidStage`, `jobStage`) returns where it stopped, so each slice builds on the one before it, and each `run*Chain` writes one report.
 
+## Owner dashboard
+
+`DashboardServer` (`src/dashboard/server.ts`) is a small `node:http` server with the page inline in `src/dashboard/page.ts`. It has no dependencies.
+
+- `approver()` is an `Approver` that parks each request until the owner answers it on the page. Batch requests can be approved in full or by item.
+- `tee(log)` wraps the run's event log, so every event also streams to the page over server-sent events (`/api/stream`).
+- `/api/runs` lists the reports in the `--out` folder, and `/api/runs/:file` reads one. Only plain `*.json` names are served.
+- It listens on 127.0.0.1 only. Every API call needs a random token, sent in the `x-dashboard-token` header. The terminal prints it in the URL fragment, so it never reaches a server log. Another site's page cannot set that header, so it cannot approve anything. The page sets a content security policy and builds the DOM with `textContent` only, so agent text cannot inject script.
+
+## Next
 
 1. Postgres-backed event log and agent records.
 2. The real SAM.gov source in place of the stub.
-3. The owner dashboard for approvals and the run log.

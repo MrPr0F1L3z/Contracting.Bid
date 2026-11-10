@@ -104,6 +104,24 @@ pnpm sim closeout --job STUB-E02 --force-award    # the same with real models; y
 
 Some approvals cover several items: all the subcontracts on a job, or a payment run of several bills. The terminal lists each item. Answer `y` to approve them all, `i` to go through them one by one, or anything else to reject the batch with your text as the reason. Items you leave out come back to the agent, which can ask again for them.
 
+## Owner dashboard
+
+Add `--dashboard` to a `bid`, `job` or `closeout` run to answer approvals in your browser instead of the terminal:
+
+```sh
+pnpm sim closeout --job STUB-E02 --force-award --dashboard
+```
+
+The terminal prints a link like `http://127.0.0.1:4100/#token=…`. Open the whole link; the token in it is what lets the page act. The page has three tabs:
+
+- **Approvals:** each pending request, with Approve, Reject and a reason. Batches list their items, with "Approve all" and "Approve checked only".
+- **Live log:** the run's events as they happen.
+- **Past runs:** the saved reports, with each run's approvals and events.
+
+The run waits for you on the page. It closes when the run ends. To browse saved reports afterwards, run `pnpm sim dashboard` (add `--out DIR` if you saved them elsewhere) and press Ctrl+C to stop it. Set `DASHBOARD_PORT` to use a port other than 4100. `--dashboard` does nothing with `--auto-approve` or `--stub`, which approve everything themselves.
+
+The dashboard only listens on your own machine (127.0.0.1). It is not meant to be exposed to a network.
+
 ## Tests
 
 Every function has unit tests. Tests use scripted stub models and saved fixtures, so they never call Claude, vLLM or SAM.gov and cost nothing.

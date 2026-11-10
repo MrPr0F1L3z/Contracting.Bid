@@ -18,6 +18,7 @@ import { runBidChain, type BidReport } from "../sim/bidChain.js";
 import { runJobChain, type JobReport } from "../sim/jobChain.js";
 import { stubJobProviders } from "../sim/stubJob.js";
 import { runCloseoutChain, type CloseoutReport } from "../sim/closeoutChain.js";
+import { DashboardServer } from "../dashboard/server.js";
 import { COMPLEXITIES, type Complexity } from "../opportunities/types.js";
 import { newSeed } from "../sim/rng.js";
 import { STUB_BID_JOB, stubBidProviders } from "../sim/stubBid.js";
@@ -30,6 +31,7 @@ export const USAGE = `Usage:
                   [--auto-approve] [--stub] [--seed N] [--out DIR]
   pnpm sim job    the same flags as bid, plus [--force-award]
   pnpm sim closeout  the same flags as job
+  pnpm sim dashboard [--out DIR]   open the owner dashboard on saved reports
 
   --models   hybrid: President and PM on Claude, other roles on your local vLLM model
              cloud:  President and PM on Claude, other roles on a cheaper Claude
@@ -40,6 +42,7 @@ export const USAGE = `Usage:
   --job ID   bid only: bid this solicitation (default: picked by seed)
   --complexity  bid only: pick only among jobs at this complexity
   --auto-approve  bid and job: approve every owner gate without asking (simulation only)
+  --dashboard     bid, job and closeout: answer approvals and watch the run in the owner dashboard
   --force-award   job and closeout: if a responsive bid loses on price, award it anyway (simulation only)
   --out DIR  where to write reports (default: runs)
 
@@ -53,7 +56,8 @@ Bookkeeper invoices, pays every bill and collects, and the PM closes the project
 bid, job or closeout run always bids ${STUB_BID_JOB} and approves every gate.`;
 
 export interface SimArgs {
-  command: "hiring" | "bench" | "bid" | "job" | "closeout";
+  command: "hiring" | "bench" | "bid" | "job" | "closeout" | "dashboard";
+  dashboard?: boolean;
   forceAward?: boolean;
   profiles: Profile[];
   runs: number;
@@ -74,7 +78,7 @@ function parseCount(flag: string, value: string, min: number): number {
 /** Parses a sim command line. Throws on anything unknown. */
 export function parseSimArgs(argv: string[]): SimArgs {
   const [command, ...args] = argv;
-  if (command !== "hiring" && command !== "bench" && command !== "bid" && command !== "job" && command !== "closeout") throw new Error(`Unknown command "${command ?? ""}"`);
+  if (command !== "hiring" && command !== "bench" && command !== "bid" && command !== "job" && command !== "closeout" && command !== "dashboard") throw new Error(`Unknown command "${command ?? ""}"`);
   const bidLike = command === "bid" || command === "job" || command === "closeout";
   const parsed: SimArgs = {
     command,
@@ -87,6 +91,11 @@ export function parseSimArgs(argv: string[]): SimArgs {
     const arg = args[i]!;
     if (arg === "--stub") {
       parsed.stub = true;
+      continue;
+    }
+    if (arg === "--dashboard") {
+      if (!bidLike) throw new Error("--dashboard is only for bid, job and closeout");
+      parsed.dashboard = true;
       continue;
     }
     if (arg === "--force-award") {
@@ -120,6 +129,9 @@ export function parseSimArgs(argv: string[]): SimArgs {
       if (command !== "bench" && names.length !== 1) throw new Error(`${command} takes one profile`);
       parsed.profiles = [...new Set(names)] as Profile[];
     }
+  }
+  if (command === "dashboard" && argv.slice(1).some((a, i, all) => a.startsWith("--") && a !== "--out" && all[i - 1] !== "--out")) {
+    throw new Error("dashboard takes only --out");
   }
   if (parsed.job !== undefined && parsed.complexity !== undefined) throw new Error("Use --job or --complexity, not both");
   if (parsed.stub && bidLike) {
@@ -250,6 +262,8 @@ export interface SimDeps {
   fetchImpl?: FetchLike;
   run?: CommandRunner;
   writeReport?: (path: string, json: string) => Promise<void>;
+  /** Resolves when a standalone dashboard should stop; defaults to Ctrl+C. */
+  untilStopped?: () => Promise<void>;
   now?: () => Date;
 }
 
@@ -287,7 +301,21 @@ export async function main(argv: string[], deps: SimDeps = {}): Promise<number> 
     return 2;
   }
 
-  const config = loadConfig(deps.env ?? process.env);
+  const env = deps.env ?? process.env;
+  const port = Number(env.DASHBOARD_PORT ?? 4100);
+  if (!Number.isInteger(port) || port < 0 || port > 65535) {
+    out(`DASHBOARD_PORT must be a port number, not "${env.DASHBOARD_PORT ?? ""}"`);
+    return 2;
+  }
+  if (args.command === "dashboard") {
+    const server = new DashboardServer({ runsDir: args.out, port });
+    out(`Owner dashboard: ${await server.start()}`);
+    out("Press Ctrl+C to stop.");
+    await (deps.untilStopped ?? (() => new Promise<void>((resolve) => process.once("SIGINT", () => resolve()))))();
+    await server.stop();
+    return 0;
+  }
+  const config = loadConfig(env);
   const write = deps.writeReport ?? defaultWrite;
   const stamp = (deps.now ?? (() => new Date()))().toISOString().replace(/[:.]/g, "-");
 
@@ -336,7 +364,7 @@ export async function main(argv: string[], deps: SimDeps = {}): Promise<number> 
 
   const profile = args.profiles[0]!;
   const seed = args.seed ?? newSeed();
-  if (args.command === "bid" || args.command === "job" || args.command === "closeout") return runBid(args, profile, seed, config, stamp, write, out, deps);
+  if (args.command === "bid" || args.command === "job" || args.command === "closeout") return runBid(args, profile, seed, config, stamp, write, out, deps, port);
   let rl: ReturnType<typeof createInterface> | undefined;
   const approver =
     deps.approver ??
@@ -377,7 +405,13 @@ async function runBid(
   write: (path: string, json: string) => Promise<void>,
   out: (line: string) => void,
   deps: SimDeps,
+  port = 4100,
 ): Promise<number> {
+  const dashboard = args.dashboard && !args.stub && !args.autoApprove ? new DashboardServer({ runsDir: args.out, port }) : null;
+  if (dashboard) {
+    out(`Owner dashboard: ${await dashboard.start()}`);
+    out("Open it to answer approvals; the run waits for you there.");
+  }
   const isJob = args.command === "job" || args.command === "closeout";
   const stubs = stubJobProviders(profile);
   const providers = args.stub ? stubs : (deps.providers ?? realProviders(config, profile));
@@ -385,7 +419,9 @@ async function runBid(
   const approver =
     args.stub || args.autoApprove
       ? autoApprover
-      : (deps.approver ??
+      : dashboard
+        ? dashboard.approver()
+        : (deps.approver ??
         terminalApprover((q) => {
           rl ??= createInterface({ input: process.stdin, output: process.stdout });
           return rl.question(q);
@@ -400,6 +436,7 @@ async function runBid(
       router: new ModelRouter(providers, roleModelsFor(profile)),
       approver,
       runBudgetUsd: config.runBudgetUsd,
+      ...(dashboard ? { log: dashboard.tee() } : {}),
       ...(job !== undefined ? { noticeId: job } : {}),
       ...(args.complexity !== undefined ? { complexity: args.complexity } : {}),
     };
@@ -417,5 +454,6 @@ async function runBid(
     return report.outcome === "incomplete" ? 1 : 0;
   } finally {
     rl?.close();
+    await dashboard?.stop();
   }
 }
