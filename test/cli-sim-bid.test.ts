@@ -111,7 +111,7 @@ describe("pnpm sim bid (functional)", () => {
     expect(asked).toEqual(["pursue_opportunity", "hire_agent", "hire_agent", "submit_bid"]);
     expect(lines.find((l) => l.startsWith("Run "))).toMatch(/LOST/);
     asked.length = 0;
-    expect(await main(["bid", "--job", "STUB-E02", "--auto-approve"], { ...deps, providers: stubBidProviders("cloud") })).toBe(0);
+    expect(await main(["bid", "--job", "STUB-E02", "--seed", "2", "--auto-approve"], { ...deps, providers: stubBidProviders("cloud") })).toBe(0);
     expect(asked).toEqual([]);
   });
 
