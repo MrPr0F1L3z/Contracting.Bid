@@ -4,7 +4,7 @@ import { STUB_OPPORTUNITIES } from "../opportunities/stub.js";
 import type { Complexity, Opportunity } from "../opportunities/types.js";
 import { TRADES, BidWorld, type Award, type Quote, type Trade } from "../world/market.js";
 import { Company, HR_SYSTEM, PRESIDENT_SYSTEM, hireInitialStaff, hireRequestFromPresident, systemFor, type BaseReport, type CompanyOptions } from "./company.js";
-import { drawProblems } from "./problems.js";
+import { drawProblems, type ScheduledProblem } from "./problems.js";
 import { SeededRng } from "./rng.js";
 
 export const ESTIMATOR_SYSTEM = `You are the Estimator of a general contracting company run entirely by AI agents. \
@@ -101,29 +101,48 @@ export async function runBidChain(o: BidChainOptions): Promise<BidReport> {
   const rng = new SeededRng(o.seed);
   const problems = drawProblems(rng);
   c.event("run_started", "owner", { seed: o.seed, slice: "bidding", problems: problems.map((p) => p.problem.id) });
+  const stage = await bidStage(c, o, rng, problems);
+  c.event("run_finished", "owner", { outcome: stage.outcome, reason: stage.reason, spentUsd: c.runBudget.spentUsd() });
+  return { ...c.baseReport(), ...bidFields(stage, problems) };
+}
 
+/** Where the bid stage ended, with what the agents and the world produced. */
+export interface BidStage {
+  outcome: BidOutcome;
+  reason: string;
+  world: BidWorld | null;
+  state: BidState;
+  award: Award | null;
+}
+
+/** The bid fields of a report, from a finished bid stage. */
+export function bidFields(s: BidStage, problems: readonly ScheduledProblem[]): Omit<BidReport, keyof BaseReport> {
+  const opp = s.world?.opportunity;
+  const selected = s.world ? [...s.world.selected().values()] : [];
+  const quotedCostUsd = selected.reduce((a, x) => a + x.quote.priceUsd, 0);
+  return {
+    outcome: s.outcome,
+    reason: s.reason,
+    opportunity: opp ? { noticeId: opp.noticeId, title: opp.title, complexity: opp.complexity } : null,
+    problems: problems.map((p) => p.problem.id),
+    injected: s.world?.injectedProblem() ?? null,
+    estimate: s.state.estimate ?? null,
+    selected: selected.map((x) => ({ ...x.quote, ...(x.repricedFromUsd !== undefined ? { repricedFromUsd: x.repricedFromUsd } : {}) })),
+    bid: s.state.bid ?? null,
+    quotedCostUsd,
+    marginUsd: s.state.bid ? s.state.bid.priceUsd - quotedCostUsd : null,
+    award: s.award,
+  };
+}
+
+/**
+ * Runs slices 1 and 2 on a company: the initial hires, then the bid through
+ * to the award decision. Later slices continue from an awarded stage.
+ */
+export async function bidStage(c: Company, o: BidChainOptions, rng: SeededRng, problems: readonly ScheduledProblem[]): Promise<BidStage> {
   let world: BidWorld | null = null;
   const state: BidState = {};
-  const finish = (outcome: BidOutcome, reason: string, award: Award | null = null): BidReport => {
-    c.event("run_finished", "owner", { outcome, reason, spentUsd: c.runBudget.spentUsd() });
-    const opp = world?.opportunity;
-    const selected = world ? [...world.selected().values()] : [];
-    const quotedCostUsd = selected.reduce((a, s) => a + s.quote.priceUsd, 0);
-    return {
-      ...c.baseReport(),
-      outcome,
-      reason,
-      opportunity: opp ? { noticeId: opp.noticeId, title: opp.title, complexity: opp.complexity } : null,
-      problems: problems.map((p) => p.problem.id),
-      injected: world?.injectedProblem() ?? null,
-      estimate: state.estimate ?? null,
-      selected: selected.map((s) => ({ ...s.quote, ...(s.repricedFromUsd !== undefined ? { repricedFromUsd: s.repricedFromUsd } : {}) })),
-      bid: state.bid ?? null,
-      quotedCostUsd,
-      marginUsd: state.bid ? state.bid.priceUsd - quotedCostUsd : null,
-      award,
-    };
-  };
+  const finish = (outcome: BidOutcome, reason: string, award: Award | null = null): BidStage => ({ outcome, reason, world, state, award });
 
   const president = c.appointPresident();
   const staffed = await hireInitialStaff(c, president);
@@ -138,7 +157,8 @@ export async function runBidChain(o: BidChainOptions): Promise<BidReport> {
   } else {
     opportunity = pickOpportunity([...all], rng, o.complexity ? { complexity: o.complexity } : {});
   }
-  world = new BidWorld(opportunity, rng, problems);
+  const w = new BidWorld(opportunity, rng, problems);
+  world = w;
   c.event("opportunity_found", "world", { noticeId: opportunity.noticeId, title: opportunity.title, complexity: opportunity.complexity });
 
   // 1. The President decides whether to pursue.
@@ -147,7 +167,7 @@ export async function runBidChain(o: BidChainOptions): Promise<BidReport> {
     `${PRESIDENT_SYSTEM}\n\nA new solicitation has come in. Decide whether the company should pursue it, weighing fit, risk, \
 capacity and value, and record the decision with decide_opportunity. Pursuing goes to the owner for approval.`,
     opportunityBrief(opportunity),
-    [decideOpportunityTool(c, president, world, state)],
+    [decideOpportunityTool(c, president, w, state)],
   );
   if (!state.decision) return finish("incomplete", `The President made no decision (task stopped: ${decideResult.stop}).`);
   if (!state.decision.pursue) return finish("no_bid", `The President chose not to bid: ${state.decision.rationale}`);
@@ -185,21 +205,21 @@ capacity and value, and record the decision with decide_opportunity. Pursuing go
     procurement,
     systemFor(PROCUREMENT_SYSTEM, procurement),
     `Get quotes and select one subcontractor for each trade in the estimate for ${opportunity.noticeId}: ${trades.join(", ")}.`,
-    procurementTools(c, procurement, world, state),
+    procurementTools(c, procurement, w, state),
     3 * trades.length + 4,
   );
 
   // 5. The PM sets the price; the owner approves it before submission.
   const pm = c.staff("project_manager");
-  const bidResult = await c.runTask(pm, systemFor(PM_SYSTEM, pm), bidPackage(opportunity, estimate.lines, estimate.notes, world), [
-    submitBidTool(c, pm, world, state),
+  const bidResult = await c.runTask(pm, systemFor(PM_SYSTEM, pm), bidPackage(opportunity, estimate.lines, estimate.notes, w), [
+    submitBidTool(c, pm, w, state),
   ]);
   if (!state.bid) return finish("incomplete", `The PM proposed no bid (task stopped: ${bidResult.stop}).`);
   if (!state.bid.ownerApproved) return finish("owner_declined", `The owner rejected the bid${state.bid.ownerReason ? `: ${state.bid.ownerReason}` : "."}`);
 
   // 6. The contracting officer awards.
   c.event("bid_submitted", `project_manager#${pm.id}`, { noticeId: opportunity.noticeId, priceUsd: state.bid.priceUsd });
-  const award = world.evaluate(state.bid.priceUsd);
+  const award = w.evaluate(state.bid.priceUsd);
   c.event("award_decided", "contracting_officer", { ...award });
   return finish(award.awarded ? "awarded" : "lost", award.reason, award);
 }

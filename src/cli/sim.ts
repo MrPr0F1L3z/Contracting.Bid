@@ -15,6 +15,8 @@ import type { ModelProvider } from "../models/types.js";
 import { formatBench, summarizeBench } from "../sim/bench.js";
 import { runHiringChain, type HiringReport } from "../sim/hiringChain.js";
 import { runBidChain, type BidReport } from "../sim/bidChain.js";
+import { runJobChain, type JobReport } from "../sim/jobChain.js";
+import { stubJobProviders } from "../sim/stubJob.js";
 import { COMPLEXITIES, type Complexity } from "../opportunities/types.js";
 import { newSeed } from "../sim/rng.js";
 import { STUB_BID_JOB, stubBidProviders } from "../sim/stubBid.js";
@@ -25,6 +27,7 @@ export const USAGE = `Usage:
   pnpm sim bench  [--models hybrid,cloud] [--runs N] [--stub] [--out DIR]
   pnpm sim bid    [--models hybrid|cloud] [--job ID | --complexity easy|moderate|complex]
                   [--auto-approve] [--stub] [--seed N] [--out DIR]
+  pnpm sim job    the same flags as bid, plus [--force-award]
 
   --models   hybrid: President and PM on Claude, other roles on your local vLLM model
              cloud:  President and PM on Claude, other roles on a cheaper Claude
@@ -34,17 +37,21 @@ export const USAGE = `Usage:
   --seed N   hiring and bid: the run's seed (random if left out); a bid run replays from it
   --job ID   bid only: bid this solicitation (default: picked by seed)
   --complexity  bid only: pick only among jobs at this complexity
-  --auto-approve  bid only: approve every owner gate without asking (simulation only)
+  --auto-approve  bid and job: approve every owner gate without asking (simulation only)
+  --force-award   job only: if a responsive bid loses on price, award it anyway (simulation only)
   --out DIR  where to write reports (default: runs)
 
 Hybrid runs (opt in with --models hybrid) check vLLM first and restart it if it is busy or slow (see pnpm gpu).
 The President→HR and HR→PM hires are automatic. In "hiring", any other hire asks
 you here; in "bench", other hires are declined so runs stay comparable. In "bid", pursuing
 the job, each later hire and the bid price ask you here unless you pass --auto-approve.
-A stub bid run always bids ${STUB_BID_JOB} and approves every gate.`;
+"job" bids, then runs an awarded job: contracts, a Scheduler hire, and each site problem
+the seed brings, ending with the job's final account. A stub bid or job run always bids
+${STUB_BID_JOB} and approves every gate.`;
 
 export interface SimArgs {
-  command: "hiring" | "bench" | "bid";
+  command: "hiring" | "bench" | "bid" | "job";
+  forceAward?: boolean;
   profiles: Profile[];
   runs: number;
   stub: boolean;
@@ -64,7 +71,8 @@ function parseCount(flag: string, value: string, min: number): number {
 /** Parses a sim command line. Throws on anything unknown. */
 export function parseSimArgs(argv: string[]): SimArgs {
   const [command, ...args] = argv;
-  if (command !== "hiring" && command !== "bench" && command !== "bid") throw new Error(`Unknown command "${command ?? ""}"`);
+  if (command !== "hiring" && command !== "bench" && command !== "bid" && command !== "job") throw new Error(`Unknown command "${command ?? ""}"`);
+  const bidLike = command === "bid" || command === "job";
   const parsed: SimArgs = {
     command,
     profiles: command === "bench" ? [...PROFILES] : ["cloud"],
@@ -78,8 +86,13 @@ export function parseSimArgs(argv: string[]): SimArgs {
       parsed.stub = true;
       continue;
     }
+    if (arg === "--force-award") {
+      if (command !== "job") throw new Error("--force-award is only for job");
+      parsed.forceAward = true;
+      continue;
+    }
     if (arg === "--auto-approve") {
-      if (command !== "bid") throw new Error("--auto-approve is only for bid");
+      if (!bidLike) throw new Error("--auto-approve is only for bid and job");
       parsed.autoApprove = true;
       continue;
     }
@@ -88,7 +101,7 @@ export function parseSimArgs(argv: string[]): SimArgs {
     if (value === undefined) throw new Error(`${arg} needs a value`);
     if (arg === "--out") parsed.out = value;
     else if (arg === "--job" || arg === "--complexity") {
-      if (command !== "bid") throw new Error(`${arg} is only for bid`);
+      if (!bidLike) throw new Error(`${arg} is only for bid and job`);
       if (arg === "--job") parsed.job = value;
       else if ((COMPLEXITIES as readonly string[]).includes(value)) parsed.complexity = value as Complexity;
       else throw new Error(`Unknown complexity "${value}"; use ${COMPLEXITIES.join(", ")}`);
@@ -106,7 +119,7 @@ export function parseSimArgs(argv: string[]): SimArgs {
     }
   }
   if (parsed.job !== undefined && parsed.complexity !== undefined) throw new Error("Use --job or --complexity, not both");
-  if (parsed.stub && command === "bid") {
+  if (parsed.stub && bidLike) {
     if (parsed.job !== undefined && parsed.job !== STUB_BID_JOB) throw new Error(`A stub bid run only bids ${STUB_BID_JOB}`);
     if (parsed.complexity !== undefined && parsed.complexity !== "easy") throw new Error(`A stub bid run only bids ${STUB_BID_JOB} (easy)`);
   }
@@ -165,6 +178,28 @@ export function formatBidReport(report: BidReport): string[] {
   }
   if (report.award) lines.push(`  Competitors: ${report.award.competitors.map(money).join(", ")}`);
   lines.push(`  Claude spend: $${report.spentUsd.toFixed(4)}; ${report.approvals.length} approvals (${report.approvals.filter((a) => a.autoApproved).length} automatic); ${report.eventCount} events`);
+  return lines;
+}
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+/** One-line-per-item summary of a job run: the bid lines, then the job's execution and final account. */
+export function formatJobReport(report: JobReport): string[] {
+  const bidLines = formatBidReport({ ...report, outcome: report.outcome === "completed" ? "awarded" : report.outcome } as BidReport);
+  const head = bidLines[0]!.replace(/: AWARDED in/, ": COMPLETED in");
+  const lines = [head, ...bidLines.slice(1, -1)];
+  if (report.awardForced) lines.push("  Award FORCED for simulation: the bid lost on price");
+  if (report.schedule) lines.push(`  Schedule: ${report.schedule.map((l) => `${l.trade} ${plural(l.days, "day")}`).join(", ")}`);
+  for (const r of report.resolutions) {
+    const co = r.changeOrder ? `; change order ${money(r.changeOrder.priceUsd)} and ${plural(r.changeOrder.days, "day")}` : r.changeOrder === null ? "; no change order" : "";
+    lines.push(`  Problem ${r.problemId} (${r.trade}): ${r.choice}, cost ${money(r.costUsd)}, ${plural(r.days, "day")}${co}`);
+  }
+  const a = report.account;
+  if (a) {
+    lines.push(`  Time: ${a.actualDays} of ${a.contractDays} working days${a.daysLate > 0 ? `, ${plural(a.daysLate, "day")} late (${money(a.liquidatedDamagesUsd)} liquidated damages)` : ", on time"}`);
+    lines.push(`  Money: revenue ${money(a.revenueUsd)}, cost ${money(a.costUsd)}, profit ${a.profitUsd < 0 ? "-" : ""}${money(Math.abs(a.profitUsd))}`);
+  }
+  lines.push(bidLines.at(-1)!);
   return lines;
 }
 
@@ -263,7 +298,7 @@ export async function main(argv: string[], deps: SimDeps = {}): Promise<number> 
 
   const profile = args.profiles[0]!;
   const seed = args.seed ?? newSeed();
-  if (args.command === "bid") return runBid(args, profile, seed, config, stamp, write, out, deps);
+  if (args.command === "bid" || args.command === "job") return runBid(args, profile, seed, config, stamp, write, out, deps);
   let rl: ReturnType<typeof createInterface> | undefined;
   const approver =
     deps.approver ??
@@ -305,7 +340,9 @@ async function runBid(
   out: (line: string) => void,
   deps: SimDeps,
 ): Promise<number> {
-  const providers = args.stub ? stubBidProviders(profile) : (deps.providers ?? realProviders(config, profile));
+  const isJob = args.command === "job";
+  const stubs = isJob ? stubJobProviders(profile) : stubBidProviders(profile);
+  const providers = args.stub ? stubs : (deps.providers ?? realProviders(config, profile));
   let rl: ReturnType<typeof createInterface> | undefined;
   const approver =
     args.stub || args.autoApprove
@@ -316,10 +353,10 @@ async function runBid(
           return rl.question(q);
         }));
   const job = args.stub ? STUB_BID_JOB : args.job;
-  out(`Starting a ${profile} bid run${args.stub ? " with scripted models" : ""}, seed ${seed}. Claude budget: $${config.runBudgetUsd}.`);
+  out(`Starting a ${profile} ${args.command} run${args.stub ? " with scripted models" : ""}, seed ${seed}. Claude budget: $${config.runBudgetUsd}.`);
   try {
-    const report = await runBidChain({
-      runId: `bid-${profile}-${stamp}-${seed}`,
+    const options = {
+      runId: `${args.command}-${profile}-${stamp}-${seed}`,
       seed,
       profile,
       router: new ModelRouter(providers, roleModelsFor(profile)),
@@ -327,10 +364,12 @@ async function runBid(
       runBudgetUsd: config.runBudgetUsd,
       ...(job !== undefined ? { noticeId: job } : {}),
       ...(args.complexity !== undefined ? { complexity: args.complexity } : {}),
-    });
+    };
+    const report = isJob ? await runJobChain({ ...options, forceAward: args.forceAward ?? false }) : await runBidChain(options);
     const path = join(args.out, `${report.runId}.json`);
     await write(path, JSON.stringify(report, null, 2));
-    for (const line of formatBidReport(report)) out(line);
+    const lines = isJob ? formatJobReport(report as JobReport) : formatBidReport(report as BidReport);
+    for (const line of lines) out(line);
     out(`Report: ${path}`);
     return report.outcome === "incomplete" ? 1 : 0;
   } finally {
