@@ -4,7 +4,7 @@ import { runLoadTest } from "../gpu/loadTest.js";
 import { decide, ensureVllm, readLaneUsage, timeRequest, type FetchLike } from "../gpu/vllmProbe.js";
 import { SeededRng, newSeed } from "../sim/rng.js";
 
-export const USAGE = `Usage: pnpm vllm <command>
+export const USAGE = `Usage: pnpm gpu <command>
   check                 Report lane usage and probe speed; change nothing
   ensure                Reuse vLLM if it has room, otherwise run VLLM_STOP_CMD and VLLM_START_CMD
   loadtest [bg] [fg]    Keep [bg] requests running (default 3) and time [fg] more (default 3)`;

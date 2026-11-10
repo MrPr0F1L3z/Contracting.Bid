@@ -3,7 +3,7 @@ import { USAGE, main } from "../src/cli/vllm.js";
 import { startFakeVllm } from "./fakeVllm.js";
 
 // Functional tests: the CLI against a fake vLLM over real HTTP.
-describe("pnpm vllm", () => {
+describe("pnpm gpu", () => {
   let fake: Awaited<ReturnType<typeof startFakeVllm>>;
   let lines: string[];
   let env: Record<string, string>;

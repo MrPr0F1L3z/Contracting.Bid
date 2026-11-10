@@ -51,9 +51,9 @@ Before a run, the vLLM check reads `/metrics` for running and queued requests an
 - generation is slower than `VLLM_MIN_TOKENS_PER_SEC` (default 5)
 
 ```bash
-pnpm vllm check           # report lanes and speed, change nothing
-pnpm vllm ensure          # reuse, or stop and start fresh
-pnpm vllm loadtest 3 3    # 3 background requests, then time 3 more while they run
+pnpm gpu check           # report lanes and speed, change nothing
+pnpm gpu ensure          # reuse, or stop and start fresh
+pnpm gpu loadtest 3 3    # 3 background requests, then time 3 more while they run
 ```
 
 Override the commands with `VLLM_STOP_CMD` and `VLLM_START_CMD`.
