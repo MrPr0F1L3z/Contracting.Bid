@@ -62,12 +62,12 @@ The commands call `/usr/local/bin/vllm_service` directly, because the `vllm` ali
 
 ```bash
 pnpm sim hiring --stub             # dry run with scripted models: no API key, GPU or cost
-pnpm sim hiring                    # hybrid: President and PM on Claude, other roles on your local vLLM model
-pnpm sim hiring --models cloud     # cloud: President and PM on Opus, other roles on CLAUDE_WORKER_MODEL (Sonnet 5.5); no GPU
+pnpm sim hiring                    # cloud (default): President and PM on Opus, other roles on CLAUDE_WORKER_MODEL (Sonnet 5.5); no GPU
+pnpm sim hiring --models hybrid    # hybrid: President and PM on Claude, other roles on your local vLLM model
 pnpm sim bench --runs 3            # 3 runs of each profile, alternating, then a time and cost comparison
 ```
 
-The President hires an HR rep, and HR hires a Project Manager. Both hires are automatic. Any other hire an agent proposes asks you in the terminal (`y` approves; anything else rejects, and your text is the reason). A real run checks vLLM first (see above), needs `ANTHROPIC_API_KEY`, and is capped at `RUN_BUDGET_USD` (default $5) of Claude spend. Each run writes a JSON report to `runs/`, including every event and the wall-clock time of each task. A benchmark declines any hire beyond the automatic two, so every run does the same work.
+The President hires an HR rep, and HR hires a Project Manager. Both hires are automatic. Any other hire an agent proposes asks you in the terminal (`y` approves; anything else rejects, and your text is the reason). A hybrid run checks vLLM first (see above). A real run needs `ANTHROPIC_API_KEY`, and is capped at `RUN_BUDGET_USD` (default $5) of Claude spend. Each run writes a JSON report to `runs/`, including every event and the wall-clock time of each task. A benchmark declines any hire beyond the automatic two, so every run does the same work.
 
 ## Tests
 

@@ -13,8 +13,8 @@ import type { ProfileSummary } from "../src/sim/bench.js";
 import { startFakeVllm } from "./fakeVllm.js";
 
 describe("parseSimArgs", () => {
-  it("defaults: hiring uses hybrid, bench compares both profiles 3 times", () => {
-    expect(parseSimArgs(["hiring"])).toEqual({ command: "hiring", profiles: ["hybrid"], runs: 3, stub: false, out: "runs" });
+  it("defaults: hiring uses cloud, bench compares both profiles 3 times", () => {
+    expect(parseSimArgs(["hiring"])).toEqual({ command: "hiring", profiles: ["cloud"], runs: 3, stub: false, out: "runs" });
     expect(parseSimArgs(["bench"])).toMatchObject({ command: "bench", profiles: ["hybrid", "cloud"], runs: 3 });
   });
   it("reads every flag", () => {
@@ -136,7 +136,7 @@ describe("pnpm sim (functional)", () => {
       const ran: string[] = [];
       const writes: string[] = [];
       const env = { VLLM_BASE_URL: fake.baseUrl, VLLM_MODEL: "not-loaded", VLLM_STOP_CMD: "stop-it", VLLM_START_CMD: "start-it" };
-      const code = await main(["hiring", "--seed", "1"], {
+      const code = await main(["hiring", "--models", "hybrid", "--seed", "1"], {
         out, env, now, providers: stubHiringProviders(), run: async (c) => { ran.push(c); }, writeReport: async (p) => { writes.push(p); },
       });
       expect(code).toBe(0);

@@ -21,15 +21,15 @@ export const USAGE = `Usage:
   pnpm sim hiring [--models hybrid|cloud] [--stub] [--seed N] [--out DIR]
   pnpm sim bench  [--models hybrid,cloud] [--runs N] [--stub] [--out DIR]
 
-  --models   hybrid: President and PM on Claude, other roles on your local vLLM model (default)
+  --models   hybrid: President and PM on Claude, other roles on your local vLLM model
              cloud:  President and PM on Claude, other roles on a cheaper Claude
-                     model (CLAUDE_WORKER_MODEL, default claude-sonnet-5-5); no GPU
+                     model (CLAUDE_WORKER_MODEL, default claude-sonnet-5-5); no GPU (default)
   --runs N   bench only: runs per profile (default 3), alternating profiles
   --stub     scripted models: no API key, GPU or cost (a dry run)
   --seed N   hiring only: seed to record with the run (random if left out)
   --out DIR  where to write reports (default: runs)
 
-Hybrid runs check vLLM first and restart it if it is busy or slow (see pnpm gpu).
+Hybrid runs (opt in with --models hybrid) check vLLM first and restart it if it is busy or slow (see pnpm gpu).
 The President→HR and HR→PM hires are automatic. In "hiring", any other hire asks
 you here; in "bench", other hires are declined so runs stay comparable.`;
 
@@ -54,7 +54,7 @@ export function parseSimArgs(argv: string[]): SimArgs {
   if (command !== "hiring" && command !== "bench") throw new Error(`Unknown command "${command ?? ""}"`);
   const parsed: SimArgs = {
     command,
-    profiles: command === "bench" ? [...PROFILES] : ["hybrid"],
+    profiles: command === "bench" ? [...PROFILES] : ["cloud"],
     runs: 3,
     stub: false,
     out: "runs",
