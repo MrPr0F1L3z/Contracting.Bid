@@ -8,7 +8,7 @@ The full POC spec lives in the project's Claude Doc, "Contracting.Bid POC: Proce
 - TypeScript on Node.js 22, tested with Vitest.
 - Claude (`claude-opus-5-5`) runs the President and Project Manager. One local model on vLLM runs every other role and the simulated counterparties. With 24GB of VRAM, only one local model fits at a time.
 - Everything runs on the owner's machine with Docker Compose. CI and cloud sessions only use stub models and saved fixtures.
-- The company is a general contractor that subcontracts all work. Jobs are seeded from real SAM.gov construction solicitations, read-only. Nothing is ever submitted to SAM.gov.
+- The company is a general contractor that subcontracts all work. For the POC, jobs come from a stub of made-up federal construction solicitations. A read-only SAM.gov source will plug into the same `OpportunitySource` interface in a later sprint.
 
 ## Layout
 
@@ -20,7 +20,7 @@ The full POC spec lives in the project's Claude Doc, "Contracting.Bid POC: Proce
 | `src/events/` | Append-only event log (in-memory now, Postgres next) |
 | `src/budget/` | Per-call cost and budgets that warn at 80% and stop at 100% |
 | `src/approvals/` | The eight owner approval gates and the approval queue |
-| `src/samgov/` | Read-only SAM.gov search client, the seeded opportunity picker, and the listing cache |
+| `src/opportunities/` | The `OpportunitySource` interface, the stub source of made-up solicitations, and the seeded picker with an optional job-size cap |
 | `src/gpu/` | Pauses the owner's listed GPU processes before a run and always resumes them afterwards |
 | `db/migrations/` | Postgres schema for the data model |
 | `test/` | Unit tests for every function, plus functional tests that apply the schema to an embedded Postgres |

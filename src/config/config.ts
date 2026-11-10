@@ -10,9 +10,10 @@ export interface AppConfig {
   vllmBaseUrl: string;
   vllmApiKey: string;
   vllmModel: string;
-  samGovApiKey: string | undefined;
   databaseUrl: string;
   runBudgetUsd: number;
+  /** Optional cap on the top of a job's estimated value. */
+  maxJobValueUsd: number | undefined;
   gpuHooks: GpuHook[];
 }
 
@@ -30,9 +31,9 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     vllmBaseUrl: env.VLLM_BASE_URL || "http://localhost:8000/v1",
     vllmApiKey: env.VLLM_API_KEY || "not-needed",
     vllmModel: env.VLLM_MODEL || "Qwen/Qwen2.5-32B-Instruct-AWQ",
-    samGovApiKey: env.SAMGOV_API_KEY || undefined,
     databaseUrl: env.DATABASE_URL || "postgres://contracting:contracting@localhost:5432/contracting",
     runBudgetUsd: budget,
+    maxJobValueUsd: parseOptionalPositive("MAX_JOB_VALUE_USD", env.MAX_JOB_VALUE_USD),
     gpuHooks: parseGpuHooks(env.GPU_PAUSE_HOOKS),
   };
 }
@@ -58,4 +59,14 @@ export function parseGpuHooks(raw: string | undefined): GpuHook[] {
     }
     return { pause: (item as GpuHook).pause, resume: (item as GpuHook).resume };
   });
+}
+
+/** Parses an optional positive number; empty means "not set". */
+export function parseOptionalPositive(name: string, raw: string | undefined): number | undefined {
+  if (raw === undefined || raw.trim() === "") return undefined;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`${name} must be a positive number, got "${raw}"`);
+  }
+  return value;
 }

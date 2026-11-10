@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { loadConfig, parseGpuHooks } from "../src/config/config.js";
+import { loadConfig, parseGpuHooks, parseOptionalPositive } from "../src/config/config.js";
 import { DEFAULT_ROLE_MODELS, REPORTS_TO, ROLES, isRole } from "../src/config/roles.js";
 
 describe("loadConfig", () => {
@@ -7,7 +7,7 @@ describe("loadConfig", () => {
     const c = loadConfig({});
     expect(c.claudeModel).toBe("claude-opus-5-5");
     expect(c.runBudgetUsd).toBe(5);
-    expect(c.samGovApiKey).toBeUndefined();
+    expect(c.maxJobValueUsd).toBeUndefined();
     expect(c.gpuHooks).toEqual([]);
   });
 
@@ -15,12 +15,12 @@ describe("loadConfig", () => {
     const c = loadConfig({
       RUN_BUDGET_USD: "2.5",
       VLLM_MODEL: "ornith-9b",
-      SAMGOV_API_KEY: "k",
+      MAX_JOB_VALUE_USD: "500000",
       GPU_PAUSE_HOOKS: '[{"pause":"p","resume":"r"}]',
     });
     expect(c.runBudgetUsd).toBe(2.5);
     expect(c.vllmModel).toBe("ornith-9b");
-    expect(c.samGovApiKey).toBe("k");
+    expect(c.maxJobValueUsd).toBe(500000);
     expect(c.gpuHooks).toEqual([{ pause: "p", resume: "r" }]);
   });
 
@@ -56,5 +56,15 @@ describe("roles", () => {
   it("isRole() recognizes roles", () => {
     expect(isRole("hr")).toBe(true);
     expect(isRole("janitor")).toBe(false);
+  });
+});
+
+describe("parseOptionalPositive", () => {
+  it("returns undefined when unset and rejects bad values", () => {
+    expect(parseOptionalPositive("X", undefined)).toBeUndefined();
+    expect(parseOptionalPositive("X", "")).toBeUndefined();
+    expect(parseOptionalPositive("X", "10")).toBe(10);
+    expect(() => parseOptionalPositive("X", "-1")).toThrow(/X must be/);
+    expect(() => parseOptionalPositive("X", "abc")).toThrow();
   });
 });
