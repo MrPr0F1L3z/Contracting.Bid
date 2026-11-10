@@ -62,8 +62,18 @@ Each agent task runs in `runAgentTask`: call the model, run the tools it asks fo
 
 Scripted runs use `ReactiveProvider`, which answers each request from the tools on offer, because the problems a run meets depend on its seed.
 
-## Next
+## Closeout, AR and AP (slice 4)
+
+`runCloseoutChain` (`src/sim/closeoutChain.ts`) runs the job stage, then closes the job on a `LedgerWorld` (`src/world/ledger.ts`):
+
+1. HR hires a Bookkeeper from a written request.
+2. The Bookkeeper gets the invoice figures and the bills. The bills are one per subcontract, plus one for each problem that cost money, so they add up to the job's cost. The Bookkeeper calls `submit_invoice`; the contracting officer accepts only the exact amount due. It then calls `pay_bills`; each payment run is an owner gate (`release_payment`).
+3. The government pays 30 days after acceptance, plus 10 days for each returned invoice. With `late-payment`, it pays 15–45 days late and withholds 2–5%. That raises two receivable issues for `resolve_receivable`: claim interest or waive it, and submit closeout documents or write off the amount withheld. An issue the Bookkeeper leaves open is written off.
+4. The PM calls `close_project`, which refuses while anything is outstanding, then asks the owner (`close_project`).
+
+Each stage function (`bidStage`, `jobStage`) returns where it stopped, so each slice builds on the one before it, and each `run*Chain` writes one report.
+
 
 1. Postgres-backed event log and agent records.
-2. Slice 4: closeout and AR/AP.
+2. The real SAM.gov source in place of the stub.
 3. The owner dashboard for approvals and the run log.
