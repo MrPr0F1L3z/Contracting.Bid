@@ -81,6 +81,16 @@ pnpm sim bid --auto-approve                # approve every gate without asking (
 
 After the two automatic hires, the President decides whether to pursue the job. If you approve, HR hires an Estimator and a Procurement agent (you approve each hire), the Estimator prices each trade, Procurement gets and selects subcontractor quotes, and the PM sets the bid price, which you approve before it goes to the simulated contracting officer. The award goes to the lowest responsive bid; a bid with no selected quote for a trade the job needs is not responsive. The report shows the margin over the selected quotes, and the terminal flags a bid below cost. The run's seed draws its real-world problems; in this slice, `quote-expired` makes one trade's sub re-quote 8–15% higher.
 
+## Run a job
+
+```bash
+pnpm sim job --stub --seed 3 --force-award   # dry run: bid STUB-E02, then run it with the seed's site problems
+pnpm sim job --job STUB-M01                  # bid, and if you win, run the job; you approve each gate
+pnpm sim job --auto-approve --force-award    # unattended: every gate approved, and a responsive losing bid is awarded anyway
+```
+
+`job` takes the same flags as `bid`. If the bid wins (or `--force-award` is set and the bid was responsive), the PM gets the prime contract and the subcontracts signed (you approve both), HR hires a Scheduler (you approve), the Scheduler sequences the trades, and the PM resolves each site problem the seed drew: late deliveries, weather, sub no-shows, double-booked crews, failed inspections, change orders and hidden conditions. Each priced change order goes to you before the contracting officer sees it. The run ends with the job's final account: revenue, cost, profit, days late and liquidated damages.
+
 ## Tests
 
 Every function has unit tests. Tests use scripted stub models and saved fixtures, so they never call Claude, vLLM or SAM.gov and cost nothing.

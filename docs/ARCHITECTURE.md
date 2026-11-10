@@ -51,7 +51,19 @@ Each agent task runs in `runAgentTask`: call the model, run the tools it asks fo
 
 `BidWorld` (`src/world/market.ts`) is the simulated outside world for one bid. Each stub job has a hidden list of required trades and cost shares (`JOB_SCOPES`); the true subcontract cost is 75–90% of the government estimate's midpoint. Each trade gets 2–3 quotes at 92–130% of its true cost, and 2–4 competitors bid 108–135% of the total true cost. Every draw uses its own forked RNG stream, so a seed replays the same world regardless of the order agents ask for things.
 
+## Execution (slice 3)
+
+`runJobChain` (`src/sim/jobChain.ts`) runs the bid stage, then the awarded job on a `SiteWorld` (`src/world/site.ts`):
+
+1. Kickoff: the PM calls `sign_prime_contract` (owner gate `sign_contract`) and `issue_subcontracts` (one `sign_commitment` gate for all selected subcontracts).
+2. HR hires a Scheduler from a written request. The Scheduler calls `set_schedule` with the trades in order; `TRADE_RANK` rejects an impossible order (flooring before painting, for example). Trades run one after another and use 90% of the contract time (`JOB_DURATION_DAYS`).
+3. Each execution problem the seed drew fires on a day set by its `phaseProgress` and hits the trade working that day (hidden conditions hit the first trade, on day one). The PM gets a brief with fixed options (`resolve_problem`) or, for a change order or hidden condition, prices a change order (`price_change_order`, owner gate `approve_change_order`). The contracting officer accepts a price up to 10% over cost plus 15%; after three rejections the work goes ahead under dispute, unpaid. If the PM never decides, the site takes the slowest option.
+4. `finalAccount()` totals revenue (contract plus change orders, less liquidated damages), cost (subcontracts plus problem costs) and time.
+
+Scripted runs use `ReactiveProvider`, which answers each request from the tools on offer, because the problems a run meets depend on its seed.
+
+## Next
 
 1. Postgres-backed event log and agent records.
-2. Slice 3: execution with injected problems. Slice 4: closeout and AR/AP.
+2. Slice 4: closeout and AR/AP.
 3. The owner dashboard for approvals and the run log.

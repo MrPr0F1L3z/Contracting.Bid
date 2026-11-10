@@ -49,3 +49,28 @@ export class ScriptedProvider implements ModelProvider {
     return this.script.length - this.index;
   }
 }
+
+/** Builds a response that calls several tools at once. */
+export function toolCallsResponse(calls: Array<{ name: string; input: Record<string, unknown>; id: string }>, model = "stub"): ModelResponse {
+  return { model, text: "", toolCalls: calls.map((c) => ({ ...c })), stopReason: "tool_call", usage: { inputTokens: 0, outputTokens: 0 } };
+}
+
+/**
+ * Answers each request with a function of the request, and records every
+ * request. For scripted runs whose path depends on the seed, where a fixed
+ * list of responses cannot know what comes next.
+ */
+export class ReactiveProvider implements ModelProvider {
+  readonly name = "stub";
+  readonly requests: ModelRequest[] = [];
+
+  constructor(
+    private readonly respond: (request: ModelRequest) => ModelResponse,
+    readonly model = "stub",
+  ) {}
+
+  async complete(request: ModelRequest): Promise<ModelResponse> {
+    this.requests.push({ ...request, messages: [...request.messages] });
+    return this.respond(request);
+  }
+}
