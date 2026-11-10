@@ -59,8 +59,14 @@ describe("runJobChain (functional, scripted models)", () => {
   });
 
   it("does not force an award for a bid that was not responsive", async () => {
-    // Procurement selects nothing, so the bid misses both trades.
-    const router = patched((r) => (has(r, "request_quotes") ? textResponse("No quotes today.") : undefined));
+    // Procurement prices only painting, so the bid misses flooring.
+    const router = patched((r) => {
+      if (!has(r, "request_quotes")) return undefined;
+      const turn = r.messages.filter((m) => m.role === "assistant").length;
+      if (turn === 0) return toolCallsResponse([{ name: "request_quotes", input: { trade: "painting" }, id: "q" }]);
+      if (turn === 1) return toolCallsResponse([{ name: "select_quote", input: { quote_id: "Q-painting-1" }, id: "s" }]);
+      return textResponse("Done.");
+    });
     const r = await runJobChain(opts(1, { router, forceAward: true }));
     expect(r).toMatchObject({ outcome: "lost", awardForced: false });
     expect(r.reason).toMatch(/^Not responsive/);

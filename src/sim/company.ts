@@ -1,4 +1,4 @@
-import { ApprovalQueue, type ApprovalRequest, type Gate } from "../approvals/approvals.js";
+import { ApprovalQueue, type ApprovalItem, type ApprovalRequest, type Gate } from "../approvals/approvals.js";
 import { listStaffTool, proposeHireTool, type ApprovalDecision, type Approver, type HiringContext } from "../agents/hiringTools.js";
 import { runAgentTask, type TaskResult, type ToolHandler } from "../agents/loop.js";
 import { AgentRegistry, type AgentRecord } from "../agents/registry.js";
@@ -137,13 +137,16 @@ export class Company {
    * Puts a decision in front of the owner through a gate and records it.
    * Returns the decided request.
    */
-  async askOwner(input: { gate: Gate; requestedBy: string; summary: string; amountUsd?: number }): Promise<ApprovalRequest> {
+  async askOwner(input: { gate: Gate; requestedBy: string; summary: string; amountUsd?: number; items?: ApprovalItem[] }): Promise<ApprovalRequest> {
     const request = this.approvals.request(input);
     this.event("approval_requested", input.requestedBy, { approvalId: request.id, gate: input.gate, summary: input.summary });
     if (request.status !== "pending") return request;
     const decision: ApprovalDecision = await this.o.approver(request);
-    const decided = this.approvals.decide(request.id, decision.approve, "owner", decision.reason);
-    this.event("approval_decided", "owner", { approvalId: decided.id, gate: decided.gate, status: decided.status, reason: decided.reason ?? null });
+    const decided = this.approvals.decide(request.id, decision.approve, "owner", decision.reason, decision.items);
+    this.event("approval_decided", "owner", {
+      approvalId: decided.id, gate: decided.gate, status: decided.status, reason: decided.reason ?? null,
+      ...(decided.approvedItems ? { approvedItems: decided.approvedItems } : {}),
+    });
     return decided;
   }
 

@@ -19,6 +19,7 @@ Quotes can expire or change; check the result of each selection and use procurem
 export const PM_SYSTEM = `You are the Project Manager of a general contracting company run entirely by AI agents. \
 You turn the estimate and the selected subcontractor quotes into a bid price that covers subcontract cost, \
 overhead and profit, and is low enough to win a lowest-price-technically-acceptable award. \
+The company never takes a job at a loss: the price may not be below the cost of the selected quotes. \
 The owner approves every bid before it goes to the contracting officer.`;
 
 export interface BidChainOptions extends CompanyOptions {
@@ -84,7 +85,7 @@ export function bidPackage(o: Opportunity, lines: readonly EstimateLine[], notes
     `Total of selected quotes: ${usd(quoted)}`,
     `Estimator's notes: ${notes || "none"}`,
     "",
-    "Set the bid price with submit_bid.",
+    "Set the bid price with submit_bid. It may not be below the total of selected quotes.",
   ].join("\n");
 }
 

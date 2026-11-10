@@ -147,10 +147,27 @@ describe("runBidChain (functional, scripted models)", () => {
     expect(none).toMatchObject({ outcome: "incomplete", reason: "The Estimator submitted no estimate (task stopped: done)." });
 
     const est = toolCallResponse("submit_estimate", { line_items: [{ trade: "painting", scope: "", cost_usd: 1 }], notes: "" });
-    const local = new ScriptedProvider([...team, est, textResponse("ok"), textResponse("no quotes")]);
+    const local = new ScriptedProvider([...team, est, textResponse("ok"),
+      toolCallResponse("request_quotes", { trade: "painting" }, "q1"), toolCallResponse("select_quote", { quote_id: "Q-painting-1" }, "q2"), textResponse("done")]);
     const approver: Approver = async (req) => ({ approve: req.gate !== "submit_bid", reason: "too high" });
     const rejected = await runBidChain(opts(1, { approver, router: new ModelRouter({ claude: claude(), local }) }));
-    expect(rejected).toMatchObject({ outcome: "owner_declined", reason: "The owner rejected the bid: too high", award: null, selected: [] });
+    expect(rejected).toMatchObject({ outcome: "owner_declined", reason: "The owner rejected the bid: too high", award: null });
+    expect(rejected.selected.map((q) => q.quoteId)).toEqual(["Q-painting-1"]);
+  });
+
+  it("refuses a bid below the cost of the selected quotes", async () => {
+    const claude = new ScriptedProvider([hireHr, textResponse("ok"), toolCallResponse("decide_opportunity", { decision: "pursue", rationale: "Good fit for us." }), textResponse("ok"),
+      toolCallResponse("submit_bid", { price_usd: 1_000, assumptions: "" }), textResponse("I could not bid.")]);
+    const local = new ScriptedProvider([hirePm, textResponse("ok"),
+      toolCallResponse("propose_hire", { role: "estimator", instructions: "Estimate every job carefully.", budget_usd: 0.5, justification: "x" }, "e"),
+      toolCallResponse("propose_hire", { role: "procurement", instructions: "Get quotes for every trade.", budget_usd: 0.5, justification: "x" }, "p"),
+      textResponse("ok"), toolCallResponse("submit_estimate", { line_items: [{ trade: "painting", scope: "", cost_usd: 1 }], notes: "" }), textResponse("ok"),
+      toolCallResponse("request_quotes", { trade: "painting" }, "q1"), toolCallResponse("select_quote", { quote_id: "Q-painting-1" }, "q2"), textResponse("done")]);
+    const asked: string[] = [];
+    const r = await runBidChain(opts(1, { router: new ModelRouter({ claude, local }), approver: async (q) => (asked.push(q.gate), { approve: true }) }));
+    expect(r).toMatchObject({ outcome: "incomplete", reason: "The PM proposed no bid (task stopped: done).", bid: null });
+    expect(asked).not.toContain("submit_bid");
+    expect(r.events.some((e) => e.type === "bid_refused")).toBe(true);
   });
 
   it("is incomplete when the PM never bids", async () => {

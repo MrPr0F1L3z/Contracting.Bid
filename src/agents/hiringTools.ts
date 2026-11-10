@@ -8,6 +8,8 @@ import { isInitialHire, type AgentRecord, type AgentRegistry } from "./registry.
 export interface ApprovalDecision {
   approve: boolean;
   reason?: string;
+  /** For a batch request: approve only these item ids. Left out, an approval covers every item. */
+  items?: string[];
 }
 
 /** Asks the owner to decide a gated request. The CLI prompts in the terminal; tests answer directly. */

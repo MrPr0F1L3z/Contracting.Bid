@@ -56,7 +56,9 @@ export function stubJobMove(request: ModelRequest, model: string): ModelResponse
     return done;
   }
   if (tools.has("submit_bid") && turn === 0) {
-    return calls({ name: "submit_bid", id: "s-bid", input: { price_usd: STUB_BID_PRICE_USD, assumptions: "Selected quotes plus 12% overhead and profit." } });
+    const quoted = Number(/Total of selected quotes: \$([\d,]+)/.exec(task)?.[1]?.replace(/,/g, "") ?? 0);
+    const price = quoted > 0 ? Math.ceil((quoted * 1.12) / 100) * 100 : STUB_BID_PRICE_USD;
+    return calls({ name: "submit_bid", id: "s-bid", input: { price_usd: price, assumptions: "Selected quotes plus 12% overhead and profit." } });
   }
   if (tools.has("sign_prime_contract")) {
     if (turn === 0) return calls({ name: "sign_prime_contract", id: "s-k1", input: {} });

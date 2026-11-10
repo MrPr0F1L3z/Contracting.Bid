@@ -79,7 +79,7 @@ pnpm sim bid --job STUB-C01 --seed 42      # a given job; the same seed replays 
 pnpm sim bid --auto-approve                # approve every gate without asking (simulation only)
 ```
 
-After the two automatic hires, the President decides whether to pursue the job. If you approve, HR hires an Estimator and a Procurement agent (you approve each hire), the Estimator prices each trade, Procurement gets and selects subcontractor quotes, and the PM sets the bid price, which you approve before it goes to the simulated contracting officer. The award goes to the lowest responsive bid; a bid with no selected quote for a trade the job needs is not responsive. The report shows the margin over the selected quotes, and the terminal flags a bid below cost. The run's seed draws its real-world problems; in this slice, `quote-expired` makes one trade's sub re-quote 8–15% higher.
+After the two automatic hires, the President decides whether to pursue the job. If you approve, HR hires an Estimator and a Procurement agent (you approve each hire), the Estimator prices each trade, Procurement gets and selects subcontractor quotes, and the PM sets the bid price, which you approve before it goes to the simulated contracting officer. The award goes to the lowest responsive bid; a bid with no selected quote for a trade the job needs is not responsive. The company never takes a job at a loss: `submit_bid` refuses any price below the total of the selected quotes, before it reaches you. The run's seed draws its real-world problems; in this slice, `quote-expired` makes one trade's sub re-quote 8–15% higher.
 
 ## Run a job
 
@@ -98,7 +98,11 @@ pnpm sim closeout --stub --seed 3 --force-award   # dry run of the whole lifecyc
 pnpm sim closeout --job STUB-E02 --force-award    # the same with real models; you approve each gate
 ```
 
-`closeout` takes the same flags as `job`. After the job finishes, HR hires a Bookkeeper (you approve). The Bookkeeper submits the final invoice, which must equal the contract price plus approved change orders, less liquidated damages; a wrong invoice is returned and delays payment. The Bookkeeper then pays every subcontractor and vendor bill, and you approve each payment run. The government pays in 30 days. If the seed drew `late-payment`, it pays late and holds back part of the invoice, and the Bookkeeper decides whether to claim Prompt Payment Act interest and whether to submit closeout documents to release the money held back. The PM then asks you to close the project. The report ends with the cash position: received, paid out and cash profit.
+`closeout` takes the same flags as `job`. After the job finishes, HR hires a Bookkeeper (you approve). The Bookkeeper drafts the final invoice, which you approve before it is sent. It must equal the contract price plus approved change orders, less liquidated damages; a wrong invoice is returned and delays payment. The Bookkeeper then pays every subcontractor and vendor bill, and you approve each payment run. The government pays in 30 days. If the seed drew `late-payment`, it pays late and holds back part of the invoice, and the Bookkeeper decides whether to claim Prompt Payment Act interest and whether to submit closeout documents to release the money held back. The PM then asks you to close the project. The report ends with the cash position: received, paid out and cash profit.
+
+## Approving batches
+
+Some approvals cover several items: all the subcontracts on a job, or a payment run of several bills. The terminal lists each item. Answer `y` to approve them all, `i` to go through them one by one, or anything else to reject the batch with your text as the reason. Items you leave out come back to the agent, which can ask again for them.
 
 ## Tests
 

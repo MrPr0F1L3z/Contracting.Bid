@@ -12,12 +12,21 @@ export function submitInvoiceTool(c: Company, agent: AgentRecord, ledger: Ledger
   return {
     definition: {
       name: "submit_invoice",
-      description: "Submit the final invoice to the contracting officer. A wrong amount is returned and delays payment.",
+      description: "Submit the final invoice to the contracting officer. The owner approves it first. A wrong amount is returned and delays payment.",
       inputSchema: { properties: { amount_usd: { type: "number" } }, required: ["amount_usd"], additionalProperties: false },
     },
     async handle(input) {
       const amount = input.amount_usd;
       if (typeof amount !== "number" || !(amount > 0)) return err("amount_usd must be a positive number");
+      if (ledger.invoiced()) return err("The final invoice was already accepted.");
+      // Owner rule: every final invoice is approved by the owner before it is sent.
+      const req = await c.askOwner({
+        gate: "submit_invoice",
+        requestedBy: actorOf(agent),
+        summary: `Send the final invoice for ${ledger.site.bid.opportunity.noticeId}: ${usd(Math.round(amount))}.`,
+        amountUsd: Math.round(amount),
+      });
+      if (req.status !== "approved") return err(`The owner did not approve the invoice${req.reason ? `: ${req.reason}` : ""}.`);
       const result = ledger.submitInvoice(Math.round(amount));
       c.event("invoice_submitted", actorOf(agent), { amountUsd: Math.round(amount), accepted: result.accepted, reason: result.reason });
       return result.accepted ? { content: result.reason } : err(result.reason);
@@ -38,7 +47,7 @@ export function payablesTools(c: Company, agent: AgentRecord, ledger: LedgerWorl
     {
       definition: {
         name: "pay_bills",
-        description: "Propose a payment run for these bills. The owner approves it before any money moves.",
+        description: "Propose a payment run for these bills. The owner approves all of it or only some bills before any money moves.",
         inputSchema: {
           properties: { bill_ids: { type: "array", items: { type: "string" } } },
           required: ["bill_ids"],
@@ -57,13 +66,18 @@ export function payablesTools(c: Company, agent: AgentRecord, ledger: LedgerWorl
         const req = await c.askOwner({
           gate: "release_payment",
           requestedBy: actorOf(agent),
-          summary: `Pay ${bills.length} bills totaling ${usd(total)}: ${bills.map((b) => `${b.payee} ${usd(b.amountUsd)}`).join("; ")}.`,
+          summary: `Pay ${bills.length} bills totaling ${usd(total)}.`,
           amountUsd: total,
+          items: bills.map((b) => ({ id: b.billId, label: `${b.payee} (${b.description})`, amountUsd: b.amountUsd })),
         });
         if (req.status !== "approved") return err(`The owner did not release the payment${req.reason ? `: ${req.reason}` : ""}.`);
-        ledger.pay(ids as string[]);
-        c.event("bills_paid", "owner", { billIds: ids, totalUsd: total });
-        return { content: `Paid ${bills.length} bills totaling ${usd(total)}. ${ledger.unpaidBills().length} still unpaid.` };
+        const approved = bills.filter((b) => req.approvedItems?.includes(b.billId) ?? true);
+        ledger.pay(approved.map((b) => b.billId));
+        const paidUsd = approved.reduce((a, b) => a + b.amountUsd, 0);
+        c.event("bills_paid", "owner", { billIds: approved.map((b) => b.billId), totalUsd: paidUsd });
+        const held = bills.filter((b) => !approved.includes(b));
+        const heldNote = held.length > 0 ? ` The owner held back ${held.map((b) => b.billId).join(", ")}${req.reason ? ` (${req.reason})` : ""}.` : "";
+        return { content: `Paid ${approved.length} bills totaling ${usd(paidUsd)}.${heldNote} ${ledger.unpaidBills().length} still unpaid.` };
       },
     },
   ];

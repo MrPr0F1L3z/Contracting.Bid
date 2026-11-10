@@ -39,9 +39,9 @@ describe("kickoff tools", () => {
     expect(asked[0]).toMatchObject({ gate: "sign_contract", amountUsd: 100_000, summary: "Sign the prime contract for STUB-E02 at $100,000, 15 working days, liquidated damages $250 per day late." });
     expect(await tool(tools, "sign_prime_contract").handle({})).toMatchObject({ isError: true, content: "The prime contract is already signed." });
     const total = [...site.subcontracts.values()].reduce((a, q) => a + q.priceUsd, 0);
-    expect((await tool(tools, "issue_subcontracts").handle({})).content).toBe(`The owner signed 2 subcontracts totaling $${total.toLocaleString("en-US")}.`);
-    expect(asked[1]).toMatchObject({ gate: "sign_commitment", amountUsd: total });
-    expect(asked[1]!.summary).toMatch(/^Issue 2 subcontracts for STUB-E02 totaling/);
+    expect((await tool(tools, "issue_subcontracts").handle({})).content).toBe(`The owner signed 2 subcontracts totaling $${total.toLocaleString("en-US")}. Every subcontract is signed.`);
+    expect(asked[1]).toMatchObject({ gate: "sign_commitment", amountUsd: total, summary: `Issue 2 subcontracts for STUB-E02 totaling $${total.toLocaleString("en-US")}.` });
+    expect(asked[1]!.items?.map((i) => i.id)).toEqual(["painting", "flooring"]);
     expect(await tool(tools, "issue_subcontracts").handle({})).toMatchObject({ isError: true, content: "The subcontracts are already issued." });
     expect(state).toMatchObject({ contractSigned: true, subcontractsIssued: true });
     expect(types()).toEqual(expect.arrayContaining(["contract_signed", "subcontracts_issued"]));
@@ -55,6 +55,24 @@ describe("kickoff tools", () => {
     await tool(tools, "sign_prime_contract").handle({});
     expect(await tool(tools, "issue_subcontracts").handle({})).toEqual({ isError: true, content: "The owner did not sign the subcontracts: later." });
     expect(state.subcontractsIssued).toBeUndefined();
+  });
+});
+
+describe("issue_subcontracts, item by item", () => {
+  it("signs only the subcontracts the owner picks, then asks again for the rest", async () => {
+    let n = 0;
+    const { c, agent, site, state, asked } = setup(async () => (n++ === 0 ? { approve: true } : n === 2 ? { approve: true, items: ["flooring"], reason: "check painting scope" } : { approve: true }));
+    const tools = kickoffTools(c, agent, site, state);
+    await tool(tools, "sign_prime_contract").handle({});
+    const first = await tool(tools, "issue_subcontracts").handle({});
+    expect(first).toMatchObject({ isError: true });
+    expect(first.content).toBe("The owner signed 1 of 2 subcontracts. Not signed: painting (check painting scope). Ask again for those, or escalate.");
+    expect(state).toMatchObject({ issuedTrades: ["flooring"] });
+    expect(state.subcontractsIssued).toBeUndefined();
+    const second = await tool(tools, "issue_subcontracts").handle({});
+    expect(second.content).toMatch(/^The owner signed 1 subcontracts totaling .*Every subcontract is signed\.$/);
+    expect(asked[2]!.items?.map((i) => i.id)).toEqual(["painting"]);
+    expect(state).toMatchObject({ subcontractsIssued: true, issuedTrades: ["flooring", "painting"] });
   });
 });
 
