@@ -95,6 +95,11 @@ describe("runAgentTask", () => {
     expect(runBudget.spentUsd()).toBeCloseTo(1);
   });
 
+  it("trims the final text and ignores blank text", async () => {
+    const { result } = run([{ ...toolCallResponse("echo", { v: "a" }), text: "\n\nWorking on it. " }, textResponse("  ")]);
+    expect((await result).finalText).toBe("Working on it.");
+  });
+
   it("passes maxTokens and stamps events with the sim time", async () => {
     const { provider, log, result } = run([textResponse("hi")], { maxTokens: 500, simTime: () => 7 });
     await result;

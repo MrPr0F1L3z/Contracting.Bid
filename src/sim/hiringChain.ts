@@ -4,7 +4,7 @@ import { runAgentTask, type TaskResult } from "../agents/loop.js";
 import { AgentRegistry, type AgentRecord } from "../agents/registry.js";
 import { Budget } from "../budget/budget.js";
 import type { Role } from "../config/roles.js";
-import { InMemoryEventLog, type EventLog } from "../events/eventLog.js";
+import { InMemoryEventLog, type EventLog, type LoggedEvent } from "../events/eventLog.js";
 import type { ModelRouter } from "../models/router.js";
 
 export const PRESIDENT_SYSTEM = `You are the President of a general contracting company run entirely by AI agents. \
@@ -45,6 +45,22 @@ export interface HiringReport {
   tasks: Array<{ actor: string; role: Role; model: string } & TaskResult>;
   spentUsd: number;
   eventCount: number;
+  /** Every event in the run, so a report shows each model and tool call. */
+  events: LoggedEvent[];
+}
+
+/**
+ * The President's written request to HR. HR's instructions require one before
+ * any hire; without it, the local model claimed in its first real run
+ * (2026-11-10) that a written approval existed when none had been given.
+ */
+export function pmRequestFromPresident(presidentId: number, budgetUsd: number): string {
+  return [
+    `Written request from the President (agent #${presidentId}):`,
+    "Hire a Project Manager now.",
+    "Business need: before we bid, someone must be ready to run each awarded job from kickoff to closeout.",
+    `Approved budget: up to $${budgetUsd}.`,
+  ].join("\n");
 }
 
 /** Builds an agent's system prompt: its role brief plus the instructions its hiring manager wrote. */
@@ -110,6 +126,7 @@ export async function runHiringChain(o: HiringChainOptions): Promise<HiringRepor
       tasks,
       spentUsd: runBudget.spentUsd(),
       eventCount: log.list({ runId: o.runId }).length,
+      events: log.list({ runId: o.runId }),
     };
   };
 
@@ -117,7 +134,7 @@ export async function runHiringChain(o: HiringChainOptions): Promise<HiringRepor
   const hr = registry.byRole("hr");
   if (!hr) return finish("incomplete", `The President did not hire HR (task stopped: ${presidentResult.stop}).`);
 
-  const hrResult = await step(hr, systemFor(HR_SYSTEM, hr), "Hire the company's Project Manager now.");
+  const hrResult = await step(hr, systemFor(HR_SYSTEM, hr), pmRequestFromPresident(president.id, ctx.maxAgentBudgetUsd));
   if (!registry.byRole("project_manager")) {
     return finish("incomplete", `HR did not hire a Project Manager (task stopped: ${hrResult.stop}).`);
   }

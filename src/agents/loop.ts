@@ -81,7 +81,7 @@ export async function runAgentTask(o: AgentTaskOptions): Promise<TaskResult> {
       simTime: now(),
       payload: { model: response.model, usage: { ...response.usage }, costUsd: cost, stopReason: response.stopReason, budget: budgetStatus },
     });
-    if (response.text) finalText = response.text;
+    if (response.text.trim()) finalText = response.text.trim();
     if (response.stopReason === "refusal") return finish("refusal", step);
     messages.push(assistantMessage(response, o.provider.name));
     if (response.toolCalls.length === 0) return finish(response.stopReason === "max_tokens" ? "max_tokens" : "done", step);

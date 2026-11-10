@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { HR_SYSTEM, runHiringChain, systemFor } from "../src/sim/hiringChain.js";
+import { HR_SYSTEM, pmRequestFromPresident, runHiringChain, systemFor } from "../src/sim/hiringChain.js";
 import { STUB_HR_INSTRUCTIONS, stubHiringProviders } from "../src/sim/stubHiring.js";
 import { ModelRouter } from "../src/models/router.js";
 import { ScriptedProvider, textResponse, toolCallResponse } from "../src/models/stub.js";
@@ -30,6 +30,9 @@ describe("runHiringChain (functional, scripted models)", () => {
     expect(report.seed).toBe(42);
     expect(report.spentUsd).toBe(0);
     expect(report.eventCount).toBe(log.list().length);
+    expect(report.events).toEqual(log.list());
+    // HR works from a real written request, not one it has to assume.
+    expect(providers.local.requests[0]?.messages[0]?.content[0]).toEqual({ type: "text", text: pmRequestFromPresident(1, 2) });
     expect(log.list()[0]?.type).toBe("run_started");
     expect(log.list().at(-1)).toMatchObject({ type: "run_finished", payload: { outcome: "complete" } });
     // HR works from the instructions the President wrote.
@@ -68,5 +71,16 @@ describe("systemFor", () => {
   it("appends the hiring manager's instructions to the role brief", () => {
     const agent = { instructions: "Be brief." } as AgentRecord;
     expect(systemFor(HR_SYSTEM, agent)).toBe(`${HR_SYSTEM}\n\nStanding instructions from your hiring manager:\nBe brief.`);
+  });
+});
+
+describe("pmRequestFromPresident", () => {
+  it("names the President, the need and the approved budget", () => {
+    expect(pmRequestFromPresident(1, 2).split("\n")).toEqual([
+      "Written request from the President (agent #1):",
+      "Hire a Project Manager now.",
+      "Business need: before we bid, someone must be ready to run each awarded job from kickoff to closeout.",
+      "Approved budget: up to $2.",
+    ]);
   });
 });
