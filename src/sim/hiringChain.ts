@@ -33,11 +33,17 @@ export interface HiringChainOptions {
   maxAgentBudgetUsd?: number;
   log?: EventLog;
   maxStepsPerTask?: number;
+  /** Which model profile the router uses, recorded in the report. */
+  profile?: string;
+  wallClock?: () => number;
 }
 
 export interface HiringReport {
   runId: string;
   seed: number;
+  profile: string;
+  /** Wall-clock time for the whole run, in milliseconds. */
+  durationMs: number;
   outcome: "complete" | "incomplete";
   reason: string;
   agents: AgentRecord[];
@@ -87,6 +93,8 @@ export async function runHiringChain(o: HiringChainOptions): Promise<HiringRepor
     maxAgentBudgetUsd: o.maxAgentBudgetUsd ?? 2,
   };
   const tasks: HiringReport["tasks"] = [];
+  const wall = o.wallClock ?? (() => performance.now());
+  const started = wall();
   log.append({ runId: o.runId, type: "run_started", actor: "owner", simTime: 0, payload: { seed: o.seed, slice: "hiring" } });
 
   const president = registry.appointPresident(
@@ -108,6 +116,7 @@ export async function runHiringChain(o: HiringChainOptions): Promise<HiringRepor
       runBudget,
       agentBudget: new Budget(agent.budgetUsd),
       log,
+      wallClock: wall,
       ...(o.maxStepsPerTask !== undefined ? { maxSteps: o.maxStepsPerTask } : {}),
     });
     tasks.push({ actor, role: agent.role, model: provider.model, ...result });
@@ -119,6 +128,8 @@ export async function runHiringChain(o: HiringChainOptions): Promise<HiringRepor
     return {
       runId: o.runId,
       seed: o.seed,
+      profile: o.profile ?? "custom",
+      durationMs: wall() - started,
       outcome,
       reason,
       agents: registry.all(),

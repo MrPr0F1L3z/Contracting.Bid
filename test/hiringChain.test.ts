@@ -28,6 +28,8 @@ describe("runHiringChain (functional, scripted models)", () => {
       ["hr#2", "stub-local", "done", 2],
     ]);
     expect(report.seed).toBe(42);
+    expect(report.profile).toBe("custom");
+    expect(report.durationMs).toBeGreaterThanOrEqual(0);
     expect(report.spentUsd).toBe(0);
     expect(report.eventCount).toBe(log.list().length);
     expect(report.events).toEqual(log.list());

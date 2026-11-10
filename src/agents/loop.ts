@@ -27,6 +27,10 @@ export interface TaskResult {
   finalText: string;
   steps: number;
   spentUsd: number;
+  /** Wall-clock time for the whole task, in milliseconds. */
+  durationMs: number;
+  /** Wall-clock time spent waiting on the model, in milliseconds. */
+  modelMs: number;
 }
 
 export interface AgentTaskOptions {
@@ -43,6 +47,8 @@ export interface AgentTaskOptions {
   agentBudget?: Budget;
   log: EventLog;
   simTime?: () => number;
+  /** Wall clock in milliseconds, for timing only; never written to the event log. */
+  wallClock?: () => number;
   /** Model calls allowed for this task. */
   maxSteps?: number;
   maxTokens?: number;
@@ -56,6 +62,9 @@ export interface AgentTaskOptions {
 export async function runAgentTask(o: AgentTaskOptions): Promise<TaskResult> {
   const maxSteps = o.maxSteps ?? 8;
   const now = o.simTime ?? (() => 0);
+  const wall = o.wallClock ?? (() => performance.now());
+  const started = wall();
+  let modelMs = 0;
   const handlers = new Map(o.tools.map((t) => [t.definition.name, t]));
   const definitions = o.tools.map((t) => t.definition);
   const messages: ChatMessage[] = [{ role: "user", content: [{ type: "text", text: o.task }] }];
@@ -64,12 +73,14 @@ export async function runAgentTask(o: AgentTaskOptions): Promise<TaskResult> {
 
   for (let step = 1; step <= maxSteps; step++) {
     if (!o.runBudget.canSpend() || (o.agentBudget && !o.agentBudget.canSpend())) return finish("budget", step - 1);
+    const callStart = wall();
     const response = await o.provider.complete({
       system: o.system,
       messages: [...messages], // a snapshot, so recorded requests stay as sent
       tools: definitions,
       ...(o.maxTokens !== undefined ? { maxTokens: o.maxTokens } : {}),
     });
+    modelMs += wall() - callStart;
     const cost = costOf(response.model, response.usage);
     spent += cost;
     const budgetStatus = o.runBudget.charge(cost);
@@ -111,6 +122,6 @@ export async function runAgentTask(o: AgentTaskOptions): Promise<TaskResult> {
 
   function finish(stop: TaskStop, steps: number): TaskResult {
     o.log.append({ runId: o.runId, type: "task_finished", actor: o.actor, simTime: now(), payload: { stop, steps, spentUsd: spent } });
-    return { stop, finalText, steps, spentUsd: spent };
+    return { stop, finalText, steps, spentUsd: spent, durationMs: wall() - started, modelMs };
   }
 }

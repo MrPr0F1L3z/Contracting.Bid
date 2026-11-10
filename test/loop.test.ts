@@ -29,7 +29,7 @@ function run(script: ModelResponse[], extra: Partial<Parameters<typeof runAgentT
 describe("runAgentTask", () => {
   it("runs tool calls, feeds results back, and stops when the model stops calling tools", async () => {
     const { provider, log, result } = run([toolCallResponse("echo", { v: "a" }, "c1"), textResponse("All done")]);
-    expect(await result).toEqual({ stop: "done", finalText: "All done", steps: 2, spentUsd: 0 });
+    expect(await result).toMatchObject({ stop: "done", finalText: "All done", steps: 2, spentUsd: 0 });
     const second = provider.requests[1]!;
     expect(second.system).toBe("sys");
     expect(second.tools?.map((t) => t.name)).toEqual(["echo", "fail"]);
@@ -98,6 +98,20 @@ describe("runAgentTask", () => {
   it("trims the final text and ignores blank text", async () => {
     const { result } = run([{ ...toolCallResponse("echo", { v: "a" }), text: "\n\nWorking on it. " }, textResponse("  ")]);
     expect((await result).finalText).toBe("Working on it.");
+  });
+
+  it("times the task and the model calls with the wall clock, outside the event log", async () => {
+    let t = 0;
+    const slow = new ScriptedProvider([toolCallResponse("echo", { v: "a" }), textResponse("done")]);
+    const original = slow.complete.bind(slow);
+    slow.complete = async (req) => { t += 100; return original(req); };
+    const wallClock = () => (t += 5);
+    const log = new InMemoryEventLog();
+    const result = await runAgentTask({ runId: "r", actor: "a", provider: slow, system: "", task: "t", tools: [echo], runBudget: new Budget(5), log, wallClock });
+    // Each model call takes 100ms plus one 5ms clock read; the task adds its own reads.
+    expect(result.modelMs).toBe(210);
+    expect(result.durationMs).toBeGreaterThan(result.modelMs);
+    expect(JSON.stringify(log.list())).not.toContain("Ms");
   });
 
   it("passes maxTokens and stamps events with the sim time", async () => {
