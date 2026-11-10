@@ -2,6 +2,8 @@ import { readFile } from "node:fs/promises";
 import { createInterface } from "node:readline";
 import { FileUserStore, USERNAME, newTotpSecret, newUser, otpauthUrl, passwordProblem, verifyTotp, hashPassword, type UserStore } from "../dashboard/auth.js";
 import type { DashboardOptions } from "../dashboard/server.js";
+import type { Db } from "../db/db.js";
+import { PgUserStore, RunStore } from "../db/stores.js";
 
 export const DEFAULT_USERS_FILE = "data/dashboard-users.json";
 const ISSUER = "Contracting.Bid";
@@ -30,6 +32,7 @@ export async function dashboardOptions(
   runsDir: string,
   port: number,
   read: (path: string) => Promise<Buffer> = (p) => readFile(p),
+  db: Db | null = null,
 ): Promise<DashboardOptions> {
   const certPath = env.DASHBOARD_TLS_CERT;
   const keyPath = env.DASHBOARD_TLS_KEY;
@@ -47,11 +50,17 @@ export async function dashboardOptions(
   return {
     runsDir,
     port,
-    users: new FileUserStore(usersFile(env)),
+    users: db ? new PgUserStore(db) : new FileUserStore(usersFile(env)),
+    ...(db ? { runs: runSource(new RunStore(db)) } : {}),
     ...(env.DASHBOARD_HOST ? { host: env.DASHBOARD_HOST } : {}),
     ...(tls ? { tls } : {}),
     ...(behindProxy ? { behindProxy: true } : {}),
   };
+}
+
+/** Lets the dashboard read runs from the database instead of the reports folder. */
+export function runSource(store: RunStore): NonNullable<DashboardOptions["runs"]> {
+  return { list: () => store.list(), read: (runId) => store.report(runId) };
 }
 
 export interface UserCommandDeps {

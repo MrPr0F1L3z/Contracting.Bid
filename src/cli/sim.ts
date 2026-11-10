@@ -20,6 +20,9 @@ import { stubJobProviders } from "../sim/stubJob.js";
 import { runCloseoutChain, type CloseoutReport } from "../sim/closeoutChain.js";
 import { DashboardServer } from "../dashboard/server.js";
 import { dashboardOptions, runUserCommand, USER_USAGE, type UserCommandDeps } from "./dashboardCli.js";
+import { openDb, type Db } from "../db/db.js";
+import { loadMigrations, migrationsDir, requireMigrated } from "../db/migrate.js";
+import { PgUserStore, RunStore, type PersistentEventLog, type StoredReport } from "../db/stores.js";
 import { COMPLEXITIES, type Complexity } from "../opportunities/types.js";
 import { newSeed } from "../sim/rng.js";
 import { STUB_BID_JOB, stubBidProviders } from "../sim/stubBid.js";
@@ -268,6 +271,8 @@ export interface SimDeps {
   untilStopped?: () => Promise<void>;
   /** For `pnpm sim user`: prompts and the login store. */
   user?: Omit<UserCommandDeps, "env" | "out">;
+  /** The database; left out, DATABASE_URL picks it, and null means none. */
+  db?: Db | null;
   now?: () => Date;
 }
 
@@ -289,19 +294,49 @@ export function realProviders(config: AppConfig, profile: Profile): Record<Model
   };
 }
 
-/** Runs one sim command. Returns the process exit code. */
+/**
+ * Runs one sim command. Returns the process exit code. With DATABASE_URL set,
+ * runs, their events and dashboard logins are kept in Postgres too.
+ */
 export async function main(argv: string[], deps: SimDeps = {}): Promise<number> {
   const out = deps.out ?? ((l: string) => console.log(l));
   if (argv.length === 0 || argv[0] === "help") {
     out(USAGE);
     return 0;
   }
+  const env = deps.env ?? process.env;
+  const db = deps.db === undefined ? openDb(env) : deps.db;
+  try {
+    if (db) {
+      try {
+        await requireMigrated(db, await loadMigrations(migrationsDir(env)));
+      } catch (err) {
+        out(`Database: ${err instanceof Error ? err.message : String(err)}`);
+        if (!/pnpm db migrate/.test(String(err))) out(databaseHint(env.DATABASE_URL));
+        return 2;
+      }
+    }
+    return await runCommand(argv, { ...deps, db }, out);
+  } finally {
+    if (deps.db === undefined) await db?.close();
+  }
+}
+
+/** What to check when the database cannot be reached. */
+export function databaseHint(url: string | undefined): string {
+  const host = /@([^:/]+)/.exec(url ?? "")?.[1];
+  return host === "db"
+    ? 'DATABASE_URL points at "db", the name only other containers can use. On this machine use localhost, for example postgres://contracting:contracting@localhost:5432/contracting'
+    : "Check DATABASE_URL in .env and that Postgres is running (docker compose up -d db), or remove DATABASE_URL to run without a database.";
+}
+
+async function runCommand(argv: string[], deps: SimDeps & { db: Db | null }, out: (line: string) => void): Promise<number> {
   if (argv[0] === "user") {
     if (argv[1] === "help" || argv[1] === "--help") {
       out(USER_USAGE);
       return 0;
     }
-    return runUserCommand(argv.slice(1), { ...deps.user, env: deps.env ?? process.env, out });
+    return runUserCommand(argv.slice(1), { ...(deps.db ? { store: new PgUserStore(deps.db) } : {}), ...deps.user, env: deps.env ?? process.env, out });
   }
   let args: SimArgs;
   try {
@@ -321,7 +356,7 @@ export async function main(argv: string[], deps: SimDeps = {}): Promise<number> 
   if (args.command === "dashboard") {
     let server: DashboardServer;
     try {
-      server = new DashboardServer(await dashboardOptions(env, args.out, port));
+      server = new DashboardServer(await dashboardOptions(env, args.out, port, undefined, deps.db));
       out(`Owner dashboard: ${await server.start()}`);
     } catch (err) {
       out(err instanceof Error ? err.message : String(err));
@@ -349,17 +384,19 @@ export async function main(argv: string[], deps: SimDeps = {}): Promise<number> 
     });
   }
 
-  const runOnce = (profile: Profile, seed: number, approver: Approver) => {
+  const runOnce = (profile: Profile, seed: number, approver: Approver, log?: PersistentEventLog) => {
     const providers = args.stub ? stubHiringProviders(profile) : (deps.providers ?? realProviders(config, profile));
     return runHiringChain({
-      runId: `hiring-${profile}-${stamp}-${seed}`,
+      runId: hiringRunId(profile, seed),
       seed,
       profile,
       router: new ModelRouter(providers, roleModelsFor(profile)),
       approver,
       runBudgetUsd: config.runBudgetUsd,
+      ...(log ? { log } : {}),
     });
   };
+  const hiringRunId = (profile: Profile, seed: number) => `hiring-${profile}-${stamp}-${seed}`;
 
   if (args.command === "bench") {
     out(`Benchmark: ${args.runs} runs each of ${args.profiles.join(", ")}${args.stub ? " with scripted models" : ""}. Claude budget: $${config.runBudgetUsd} per run.`);
@@ -391,11 +428,17 @@ export async function main(argv: string[], deps: SimDeps = {}): Promise<number> 
     });
   out(`Starting a ${profile} hiring run${args.stub ? " with scripted models" : ""}. Claude budget: $${config.runBudgetUsd}.`);
   try {
-    const report = await runOnce(profile, seed, approver);
+    const store = deps.db ? new RunStore(deps.db) : null;
+    const log = await store?.start({ runId: hiringRunId(profile, seed), seed, command: "hiring", profile, modelConfig: { ...roleModelsFor(profile) } });
+    const report = await runOnce(profile, seed, approver, log);
     const path = join(args.out, `${report.runId}.json`);
     await write(path, JSON.stringify(report, null, 2));
     for (const line of formatReport(report)) out(line);
     out(`Report: ${path}`);
+    if (store && log) {
+      await store.finish(log, report as unknown as StoredReport);
+      out("Saved to the database.");
+    }
     return report.outcome === "complete" ? 0 : 1;
   } finally {
     rl?.close();
@@ -427,7 +470,7 @@ async function runBid(
   let dashboard: DashboardServer | null = null;
   if (args.dashboard && !args.stub && !args.autoApprove) {
     try {
-      dashboard = new DashboardServer(await dashboardOptions(deps.env ?? process.env, args.out, port));
+      dashboard = new DashboardServer(await dashboardOptions(deps.env ?? process.env, args.out, port, undefined, deps.db));
       out(`Owner dashboard: ${await dashboard.start()}`);
     } catch (err) {
       out(err instanceof Error ? err.message : String(err));
@@ -452,14 +495,18 @@ async function runBid(
   const job = args.stub ? STUB_BID_JOB : args.job;
   out(`Starting a ${profile} ${args.command} run${args.stub ? " with scripted models" : ""}, seed ${seed}. Claude budget: $${config.runBudgetUsd}.`);
   try {
+    const runId = `${args.command}-${profile}-${stamp}-${seed}`;
+    const store = deps.db ? new RunStore(deps.db) : null;
+    const saved = await store?.start({ runId, seed, command: args.command, profile, modelConfig: { ...roleModelsFor(profile) } });
+    const log = dashboard ? dashboard.tee(saved) : saved;
     const options = {
-      runId: `${args.command}-${profile}-${stamp}-${seed}`,
+      runId,
       seed,
       profile,
       router: new ModelRouter(providers, roleModelsFor(profile)),
       approver,
       runBudgetUsd: config.runBudgetUsd,
-      ...(dashboard ? { log: dashboard.tee() } : {}),
+      ...(log ? { log } : {}),
       ...(job !== undefined ? { noticeId: job } : {}),
       ...(args.complexity !== undefined ? { complexity: args.complexity } : {}),
     };
@@ -474,6 +521,10 @@ async function runBid(
         : isJob ? formatJobReport(report as JobReport) : formatBidReport(report as BidReport);
     for (const line of lines) out(line);
     out(`Report: ${path}`);
+    if (store && saved) {
+      await store.finish(saved, report as unknown as StoredReport);
+      out("Saved to the database.");
+    }
     return report.outcome === "incomplete" ? 1 : 0;
   } finally {
     rl?.close();

@@ -12,7 +12,6 @@ services:
       - "127.0.0.1:5432:5432"
     volumes:
       - db-data:/var/lib/postgresql/data
-      - ./db/migrations:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U contracting"]
       interval: 5s
@@ -23,6 +22,9 @@ services:
     env_file:
       - path: .env
         required: false
+    environment:
+      # Inside Compose the database's host is "db", not localhost.
+      DATABASE_URL: postgres://contracting:contracting@db:5432/contracting
     depends_on:
       db:
         condition: service_healthy

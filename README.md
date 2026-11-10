@@ -27,6 +27,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the code layout.
 pnpm install
 cp .env.example .env   # then fill in your keys and model name
 docker compose up -d db
+pnpm db migrate        # create or update the database tables
 pnpm check             # typecheck + tests (no keys or GPU needed)
 ```
 
@@ -143,6 +144,16 @@ The dashboard listens only on this machine until you set up HTTPS. The simplest 
 The dashboard itself stays on 127.0.0.1; only Caddy faces the internet. `DASHBOARD_BEHIND_PROXY=1` marks the session cookie Secure, turns on HSTS, and takes the visitor's address from Caddy for the lockout.
 
 If you already have a certificate (for example from certbot), the dashboard can serve HTTPS itself instead: set `DASHBOARD_HOST=0.0.0.0`, `DASHBOARD_TLS_CERT` and `DASHBOARD_TLS_KEY`. It refuses to serve plain HTTP on anything but 127.0.0.1.
+
+## Database
+
+With `DATABASE_URL` set, every `hiring`, `bid`, `job` and `closeout` run is saved in Postgres as well as in `runs/`: the report, every event as it happens, and the run's agents and approvals (including who decided). Dashboard logins live there too, and the dashboard's Past runs tab reads from it. Benchmarks (`bench`) are still files only.
+
+- `pnpm db migrate` creates or updates the tables. Run it after `git pull` when a pull adds a file to `db/migrations/`; a run refuses to start until you do.
+- `pnpm db status` shows which migrations are applied.
+- `pnpm db import` copies your existing `runs/*.json` reports and `data/dashboard-users.json` logins into the database. It skips anything already there, so it is safe to run twice.
+
+The sim runs on this machine, so `DATABASE_URL` uses `localhost`, not the container name `db`. Postgres only listens on 127.0.0.1. Remove `DATABASE_URL` to run without a database, as before.
 
 ## Tests
 

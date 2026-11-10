@@ -17,15 +17,16 @@ The full POC spec lives in the project's Claude Doc, "Contracting.Bid POC: Proce
 | `src/models/` | Provider-neutral model types, the Claude and vLLM providers, a scripted stub, record/replay wrappers, and the role router |
 | `src/config/` | Environment config and the role list: who reports to whom, and which model family runs each role |
 | `src/sim/` | Seeded RNG, the simulated clock, the problem catalog, and the hiring chain (slice 1) |
-| `src/events/` | Append-only event log (in-memory now, Postgres next) |
+| `src/events/` | Append-only event log, in memory during a run |
+| `src/db/` | The `Db` interface over `pg`, the migration runner, and the Postgres stores for runs, events and logins |
 | `src/budget/` | Per-call cost and budgets that warn at 80% and stop at 100% |
 | `src/approvals/` | The nine owner approval gates and the approval queue, with batch approvals that can be approved in full or item by item |
 | `src/opportunities/` | The `OpportunitySource` interface, the stub source of made-up solicitations (two each at easy, moderate and complex), the seeded picker, and a coverage planner that spreads runs across complexity levels |
 | `src/agents/` | Agent records and the hiring policy, the agent tool loop (budgets, event logging, Claude's thinking passed back unchanged), and the hiring tools |
 | `src/gpu/` | Pauses the owner's listed GPU processes before a run and always resumes them afterwards; checks vLLM lanes and speed and restarts it when needed |
 | `src/dashboard/` | The owner dashboard: a local web page for approvals, the live event log and saved reports |
-| `src/cli/` | `pnpm gpu` (vLLM check, ensure, load test) and `pnpm sim` (hiring, bench, bid, job, closeout, dashboard) |
-| `db/migrations/` | Postgres schema for the data model |
+| `src/cli/` | `pnpm gpu` (vLLM check, ensure, load test), `pnpm sim` (hiring, bench, bid, job, closeout, dashboard, user) and `pnpm db` (migrate, status, import) |
+| `db/migrations/` | Postgres schema for the data model, applied in order by `pnpm db migrate` |
 | `test/` | Unit tests for every function, plus functional tests that apply the schema to an embedded Postgres |
 
 ## Determinism and replay
@@ -85,9 +86,18 @@ Each stage function (`bidStage`, `jobStage`) returns where it stopped, so each s
 - **Sessions:** in memory, in an `HttpOnly; SameSite=Strict` cookie (`__Host-` and `Secure` under HTTPS). They end after an hour idle or 12 hours. Every POST needs the page's `x-requested-with` header, a same-origin `Origin` when sent, and the session's CSRF token. A decision records who made it (`decidedBy: owner:NAME`).
 - **Transport:** HTTP on 127.0.0.1 only, or HTTPS from its own certificate, or behind Caddy (`deploy/Caddyfile`, compose profile `public`), which gets a Let's Encrypt certificate. HSTS is on whenever it is reached over HTTPS.
 - The page sets a strict content security policy and builds the DOM with `textContent` only, so agent text cannot inject script.
-- `UserStore` is an interface; the file store becomes a Postgres table in the DB layer.
+- `UserStore` is an interface: `PgUserStore` (the `dashboard_users` table) when `DATABASE_URL` is set, a mode-600 JSON file otherwise.
+
+## Database
+
+`src/db/` keeps runs in Postgres when `DATABASE_URL` is set. Everything goes through a small `Db` interface (`query`, `exec`, `transaction`), backed by `pg` in real runs and an embedded Postgres (PGlite) in tests.
+
+- **Migrations:** `db/migrations/NNN_name.sql`, applied in order, each in its own transaction, and recorded in `schema_migrations`. A database the container set up before tracking existed is recorded as already having 001. A run refuses to start while a migration is pending.
+- **Events:** `PersistentEventLog` wraps the run's in-memory log. `append` stays synchronous, so a run plays out the same with or without a database. It queues each insert in order, and `flush()` waits for them and reports the first failure.
+- **Runs:** `RunStore.start` inserts the `runs` row before the first event. `finish` saves the report JSON, its outcome columns, and the run's agents and approvals in one transaction.
+- **The dashboard** reads Past runs from `RunStore` instead of the reports folder.
 
 ## Next
 
-1. Postgres-backed event log and agent records.
-2. The real SAM.gov source in place of the stub.
+1. The real SAM.gov source in place of the stub.
+2. An always-on dashboard service that starts runs itself, now that runs live in the database.
