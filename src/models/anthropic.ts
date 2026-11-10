@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type {
   ChatMessage,
+  ContentPart,
   ModelProvider,
   ModelRequest,
   ModelResponse,
@@ -10,26 +11,29 @@ import type {
 
 export const DEFAULT_CLAUDE_MODEL = "claude-opus-5-5";
 
-/** Converts neutral messages to Anthropic message params. */
+/** Converts one neutral content part to an Anthropic block. */
+function toAnthropicBlock(part: ContentPart): Anthropic.ContentBlockParam {
+  switch (part.type) {
+    case "text":
+      return { type: "text", text: part.text };
+    case "tool_call":
+      return { type: "tool_use", id: part.id, name: part.name, input: part.input };
+    case "tool_result":
+      return { type: "tool_result", tool_use_id: part.toolCallId, content: part.content, is_error: part.isError ?? false };
+  }
+}
+
+/**
+ * Converts neutral messages to Anthropic message params. An assistant turn
+ * that Claude produced is sent back exactly as returned, thinking blocks
+ * included, which the API requires in a tool-use loop.
+ */
 export function toAnthropicMessages(messages: ChatMessage[]): Anthropic.MessageParam[] {
-  return messages.map((m) => ({
-    role: m.role,
-    content: m.content.map((part): Anthropic.ContentBlockParam => {
-      switch (part.type) {
-        case "text":
-          return { type: "text", text: part.text };
-        case "tool_call":
-          return { type: "tool_use", id: part.id, name: part.name, input: part.input };
-        case "tool_result":
-          return {
-            type: "tool_result",
-            tool_use_id: part.toolCallId,
-            content: part.content,
-            is_error: part.isError ?? false,
-          };
-      }
-    }),
-  }));
+  return messages.map((m) =>
+    m.role === "assistant" && m.raw?.provider === "anthropic"
+      ? { role: "assistant", content: m.raw.content as Anthropic.ContentBlockParam[] }
+      : { role: m.role, content: m.content.map(toAnthropicBlock) },
+  );
 }
 
 /** Converts neutral tool definitions to Anthropic tools. */

@@ -14,7 +14,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "check": "pnpm typecheck && pnpm test",
-    "gpu": "tsc -p tsconfig.json && node dist/src/cli/vllm.js"
+    "gpu": "tsc -p tsconfig.json && node dist/src/cli/vllm.js",
+    "sim": "tsc -p tsconfig.json && node dist/src/cli/sim.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.7.0",

@@ -17,6 +17,22 @@ export type ContentPart =
 export interface ChatMessage {
   role: "user" | "assistant";
   content: ContentPart[];
+  /**
+   * The provider's own content for an assistant turn. A provider that
+   * recognises it sends it back unchanged (Claude needs its thinking blocks
+   * returned as-is); other providers use `content`.
+   */
+  raw?: { provider: string; content: unknown };
+}
+
+/** Builds the assistant message to append after a response, keeping its raw content. */
+export function assistantMessage(response: ModelResponse, provider: string): ChatMessage {
+  const content: ContentPart[] = [];
+  if (response.text) content.push({ type: "text", text: response.text });
+  for (const call of response.toolCalls) {
+    content.push({ type: "tool_call", id: call.id, name: call.name, input: call.input });
+  }
+  return response.raw === undefined ? { role: "assistant", content } : { role: "assistant", content, raw: { provider, content: response.raw } };
 }
 
 export interface ModelRequest {

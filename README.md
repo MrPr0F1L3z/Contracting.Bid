@@ -58,6 +58,15 @@ pnpm gpu loadtest 3 3    # 3 background requests, then time 3 more while they ru
 
 The commands call `/usr/local/bin/vllm_service` directly, because the `vllm` alias only exists in interactive shells. `vllm_service start` uses `sudo systemctl`, so it needs passwordless sudo for that unit or it will stop and ask for a password. Override the commands with `VLLM_STOP_CMD` and `VLLM_START_CMD`.
 
+## Run the hiring chain
+
+```bash
+pnpm sim hiring --stub    # dry run with scripted models: no API key, GPU or cost
+pnpm sim hiring           # President on Claude, HR on your local vLLM model
+```
+
+The President hires an HR rep, and HR hires a Project Manager. Both hires are automatic. Any other hire an agent proposes asks you in the terminal (`y` approves; anything else rejects, and your text is the reason). A real run checks vLLM first (see above), needs `ANTHROPIC_API_KEY`, and is capped at `RUN_BUDGET_USD` (default $5) of Claude spend. Each run writes a JSON report to `runs/`.
+
 ## Tests
 
 Every function has unit tests. Tests use scripted stub models and saved fixtures, so they never call Claude, vLLM or SAM.gov and cost nothing.

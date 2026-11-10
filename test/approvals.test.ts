@@ -39,3 +39,14 @@ describe("ApprovalQueue", () => {
     expect(GATES).toHaveLength(8);
   });
 });
+
+describe("ApprovalQueue auto-approve reason", () => {
+  it("approves one request at once with the given reason, without changing the gate", () => {
+    const q = new ApprovalQueue();
+    const auto = q.request({ gate: "hire_agent", requestedBy: "president", summary: "Hire HR", autoApproveReason: "Initial hire" });
+    expect(auto).toMatchObject({ status: "approved", autoApproved: true, decidedBy: "auto", reason: "Initial hire" });
+    expect(auto).not.toHaveProperty("autoApproveReason");
+    const next = q.request({ gate: "hire_agent", requestedBy: "hr", summary: "Hire estimator" });
+    expect(next.status).toBe("pending");
+  });
+});
