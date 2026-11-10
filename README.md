@@ -18,7 +18,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the code layout.
 
 - Node.js 22 and pnpm (`corepack enable`)
 - Docker with Compose, for Postgres
-- A vLLM server on your machine with an OpenAI-compatible API (default `http://localhost:8000/v1`)
+- A vLLM server on your machine with an OpenAI-compatible API (default `http://localhost:8001/v1`)
 - An Anthropic API key
 
 ## Setup
@@ -44,9 +44,9 @@ The runner runs the stop commands before a simulation and always runs the start 
 
 ### Reuse or restart vLLM
 
-Before a run, the vLLM check reads `/metrics` for running and queued requests and times one short test request. It reuses the running server unless one of these is true, in which case it runs `vllm stop` then `vllm start big` and waits for the server to come up:
+Before a run, the vLLM check reads `/metrics` for running and queued requests and times one short test request. It reuses the running server unless one of these is true, in which case it runs `vllm_service stop` then `vllm_service start big` and waits for the server to come up:
 
-- all lanes are busy (`VLLM_MAX_LANES`, default 4, should match `--max-num-seqs`) or requests are queued
+- all lanes are busy (`VLLM_MAX_LANES`, default 2, matching `--max-num-seqs` in the `big` profile) or requests are queued
 - the test request takes longer than `VLLM_MAX_RESPONSE_SEC` (default 60)
 - generation is slower than `VLLM_MIN_TOKENS_PER_SEC` (default 5)
 
@@ -56,7 +56,7 @@ pnpm gpu ensure          # reuse, or stop and start fresh
 pnpm gpu loadtest 3 3    # 3 background requests, then time 3 more while they run
 ```
 
-Override the commands with `VLLM_STOP_CMD` and `VLLM_START_CMD`.
+The commands call `/usr/local/bin/vllm_service` directly, because the `vllm` alias only exists in interactive shells. `vllm_service start` uses `sudo systemctl`, so it needs passwordless sudo for that unit or it will stop and ask for a password. Override the commands with `VLLM_STOP_CMD` and `VLLM_START_CMD`.
 
 ## Tests
 

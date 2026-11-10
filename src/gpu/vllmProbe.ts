@@ -4,7 +4,7 @@ import type { CommandRunner } from "./hooks.js";
  * Checks whether the owner's running vLLM server can take simulation work,
  * and restarts it fresh when it can't. A server is reusable when it has a
  * free "lane" (concurrent request slot) and answers a short probe fast
- * enough. Otherwise the runner stops it and starts the 32B model again.
+ * enough. Otherwise the runner stops it and starts the big model again.
  */
 
 export type FetchLike = (
@@ -180,7 +180,7 @@ export interface EnsureResult {
 
 /**
  * Reuses the running vLLM server when it has room, otherwise stops it and
- * starts the 32B model fresh, then waits until it answers.
+ * starts the big model fresh, then waits until it answers.
  */
 export async function ensureVllm(opts: EnsureOptions): Promise<EnsureResult> {
   const fetchImpl = opts.fetchImpl ?? (fetch as unknown as FetchLike);

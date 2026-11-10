@@ -1,5 +1,5 @@
 # Runs on the owner's machine. vLLM is NOT in this file: it already runs on
-# the host GPU, and the app reaches it at host.docker.internal:8000.
+# the host GPU on port 8001. Note: vllm_service binds 127.0.0.1, which a container cannot reach via host.docker.internal.
 services:
   db:
     image: postgres:17

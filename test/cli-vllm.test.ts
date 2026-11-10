@@ -18,7 +18,7 @@ describe("pnpm gpu", () => {
   it("check reports lanes, probe and verdict without changing anything", async () => {
     fake.state.running = 1;
     expect(await main(["check"], { env, out })).toBe(0);
-    expect(lines[0]).toBe("Lanes: 1 running, 0 waiting, of 4");
+    expect(lines[0]).toBe("Lanes: 1 running, 0 waiting, of 2");
     expect(lines[2]).toMatch(/^Verdict: reuse/);
   });
 

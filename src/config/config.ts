@@ -33,18 +33,18 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   }
   return {
     claudeModel: env.CLAUDE_MODEL || DEFAULT_CLAUDE_MODEL,
-    vllmBaseUrl: env.VLLM_BASE_URL || "http://localhost:8000/v1",
+    vllmBaseUrl: env.VLLM_BASE_URL || "http://localhost:8001/v1",
     vllmApiKey: env.VLLM_API_KEY || "not-needed",
-    vllmModel: env.VLLM_MODEL || "Qwen/Qwen2.5-32B-Instruct-AWQ",
+    vllmModel: env.VLLM_MODEL || "qwen3.8-27b-abliterated",
     databaseUrl: env.DATABASE_URL || "postgres://contracting:contracting@localhost:5432/contracting",
     runBudgetUsd: budget,
     gpuHooks: parseGpuHooks(env.GPU_PAUSE_HOOKS),
     vllm: {
-      maxLanes: positive("VLLM_MAX_LANES", env.VLLM_MAX_LANES, 4),
+      maxLanes: positive("VLLM_MAX_LANES", env.VLLM_MAX_LANES, 2),
       maxResponseSec: positive("VLLM_MAX_RESPONSE_SEC", env.VLLM_MAX_RESPONSE_SEC, 60),
       minTokensPerSec: positive("VLLM_MIN_TOKENS_PER_SEC", env.VLLM_MIN_TOKENS_PER_SEC, 5),
-      stopCommand: env.VLLM_STOP_CMD || "vllm stop",
-      startCommand: env.VLLM_START_CMD || "vllm start big",
+      stopCommand: env.VLLM_STOP_CMD || "vllm_service stop",
+      startCommand: env.VLLM_START_CMD || "vllm_service start big",
     },
   };
 }

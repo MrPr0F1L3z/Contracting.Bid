@@ -58,9 +58,9 @@ describe("roles", () => {
 
 describe("vllm config", async () => {
   const { positive } = await import("../src/config/config.js");
-  it("defaults to 4 lanes, 60s, 5 tokens/s, vllm stop / vllm start big", () => {
+  it("defaults to 2 lanes, 60s, 5 tokens/s, vllm_service stop / start big", () => {
     expect(loadConfig({}).vllm).toEqual({
-      maxLanes: 4, maxResponseSec: 60, minTokensPerSec: 5, stopCommand: "vllm stop", startCommand: "vllm start big",
+      maxLanes: 2, maxResponseSec: 60, minTokensPerSec: 5, stopCommand: "vllm_service stop", startCommand: "vllm_service start big",
     });
   });
 
