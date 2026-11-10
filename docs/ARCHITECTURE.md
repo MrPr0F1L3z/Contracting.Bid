@@ -76,12 +76,16 @@ Each stage function (`bidStage`, `jobStage`) returns where it stopped, so each s
 
 ## Owner dashboard
 
-`DashboardServer` (`src/dashboard/server.ts`) is a small `node:http` server with the page inline in `src/dashboard/page.ts`. It has no dependencies.
+`DashboardServer` (`src/dashboard/server.ts`) is a small `node:http`/`node:https` server with the page inline in `src/dashboard/page.ts`. Logins are in `src/dashboard/auth.ts`, and `pnpm sim user` (`src/cli/dashboardCli.ts`) manages them. It has no dependencies.
 
 - `approver()` is an `Approver` that parks each request until the owner answers it on the page. Batch requests can be approved in full or by item.
 - `tee(log)` wraps the run's event log, so every event also streams to the page over server-sent events (`/api/stream`).
-- `/api/runs` lists the reports in the `--out` folder, and `/api/runs/:file` reads one. Only plain `*.json` names are served.
-- It listens on 127.0.0.1 only. Every API call needs a random token, sent in the `x-dashboard-token` header. The terminal prints it in the URL fragment, so it never reaches a server log. Another site's page cannot set that header, so it cannot approve anything. The page sets a content security policy and builds the DOM with `textContent` only, so agent text cannot inject script.
+- `/api/runs` lists the reports in the `--out` folder, and `/api/runs/:file` reads one. Only plain `*.json` names holding an object with a `runId` are served.
+- **Sign-in:** name, password (scrypt) and a TOTP code (RFC 6238, one step of drift, no code used twice). A wrong answer gets the same message whatever was wrong. Five failures lock the name and the address for 15 minutes.
+- **Sessions:** in memory, in an `HttpOnly; SameSite=Strict` cookie (`__Host-` and `Secure` under HTTPS). They end after an hour idle or 12 hours. Every POST needs the page's `x-requested-with` header, a same-origin `Origin` when sent, and the session's CSRF token. A decision records who made it (`decidedBy: owner:NAME`).
+- **Transport:** HTTP on 127.0.0.1 only, or HTTPS from its own certificate, or behind Caddy (`deploy/Caddyfile`, compose profile `public`), which gets a Let's Encrypt certificate. HSTS is on whenever it is reached over HTTPS.
+- The page sets a strict content security policy and builds the DOM with `textContent` only, so agent text cannot inject script.
+- `UserStore` is an interface; the file store becomes a Postgres table in the DB layer.
 
 ## Next
 

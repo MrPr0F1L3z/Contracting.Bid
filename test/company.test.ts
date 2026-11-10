@@ -51,6 +51,13 @@ describe("Company", () => {
     expect(c.log.list()[1]?.payload).toMatchObject({ status: "rejected", reason: "no" });
   });
 
+  it("records which dashboard user decided", async () => {
+    const c = company(async () => ({ approve: true, by: "partner" }));
+    const req = await c.askOwner({ gate: "submit_bid", requestedBy: "project_manager#3", summary: "Bid", amountUsd: 10 });
+    expect(req).toMatchObject({ status: "approved", decidedBy: "owner:partner" });
+    expect(c.log.list()[1]).toMatchObject({ type: "approval_decided", actor: "owner:partner" });
+  });
+
   it("runs a task on the role's model and records it", async () => {
     const c = company(undefined, new ScriptedProvider([textResponse("hi", "m")], "m"));
     const p = c.appointPresident();

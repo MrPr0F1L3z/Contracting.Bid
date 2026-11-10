@@ -8,7 +8,8 @@ services:
       POSTGRES_PASSWORD: contracting
       POSTGRES_DB: contracting
     ports:
-      - "5432:5432"
+      # Only this machine can reach the database, even when the dashboard is public.
+      - "127.0.0.1:5432:5432"
     volumes:
       - db-data:/var/lib/postgresql/data
       - ./db/migrations:/docker-entrypoint-initdb.d:ro
@@ -30,5 +31,24 @@ services:
     volumes:
       - ./runs:/app/runs
 
+  # HTTPS in front of the owner dashboard, with a Let's Encrypt certificate for
+  # DASHBOARD_DOMAIN. Start it with: docker compose --profile public up -d caddy
+  # It uses the host network so it can reach the dashboard on 127.0.0.1, and
+  # needs ports 80 and 443 open to the internet for the certificate.
+  caddy:
+    image: caddy:2.10
+    profiles: ["public"]
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      DASHBOARD_DOMAIN: ${DASHBOARD_DOMAIN:?Set DASHBOARD_DOMAIN in .env}
+      DASHBOARD_PORT: ${DASHBOARD_PORT:-4100}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
 volumes:
   db-data:
+  caddy-data:
+  caddy-config:

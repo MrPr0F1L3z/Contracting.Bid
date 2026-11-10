@@ -145,8 +145,8 @@ export class Company {
     this.event("approval_requested", input.requestedBy, { approvalId: request.id, gate: input.gate, summary: input.summary });
     if (request.status !== "pending") return request;
     const decision: ApprovalDecision = await this.o.approver(request);
-    const decided = this.approvals.decide(request.id, decision.approve, "owner", decision.reason, decision.items);
-    this.event("approval_decided", "owner", {
+    const decided = this.approvals.decide(request.id, decision.approve, decision.by ? `owner:${decision.by}` : "owner", decision.reason, decision.items);
+    this.event("approval_decided", decided.decidedBy ?? "owner", {
       approvalId: decided.id, gate: decided.gate, status: decided.status, reason: decided.reason ?? null,
       ...(decided.approvedItems ? { approvedItems: decided.approvedItems } : {}),
     });

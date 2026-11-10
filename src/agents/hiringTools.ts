@@ -10,6 +10,8 @@ export interface ApprovalDecision {
   reason?: string;
   /** For a batch request: approve only these item ids. Left out, an approval covers every item. */
   items?: string[];
+  /** Who decided, when a signed-in dashboard user did. Left out, the decision is the owner's. */
+  by?: string;
 }
 
 /** Asks the owner to decide a gated request. The CLI prompts in the terminal; tests answer directly. */

@@ -10,7 +10,7 @@ The owner asked for the dashboard next. This first version replaces the terminal
 
 ## Made while building (please review)
 
-1. **Local only, with a token.** The server listens on 127.0.0.1 and needs the token from the printed link on every API call. Nobody else on the network can reach it. *Question:* do you want to reach it from another device, such as your phone? That needs real sign-in and HTTPS, which is a bigger step.
+1. **Local only, with a token.** The server listens on 127.0.0.1 and needs the token from the printed link on every API call. Nobody else on the network can reach it. *Question:* do you want to reach it from another device, such as your phone? That needs real sign-in and HTTPS, which is a bigger step. **Answered 2026-11-10:** yes, over the public internet. See `dashboard-remote-access.md`.
 2. **No time limit on approvals.** A run waits on the page as long as it takes, the same as the terminal. A waiting run spends nothing on models.
 3. **The page closes with the run.** When the run ends, so does the server. Use `pnpm sim dashboard` to look back at it. A long-running dashboard that starts runs itself comes with Postgres, when runs outlive a single command.
 4. **Reports come from the `runs/` files**, not a database. That changes when the event log moves to Postgres.
