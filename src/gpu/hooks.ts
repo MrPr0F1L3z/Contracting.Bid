@@ -1,13 +1,17 @@
-import { exec } from "node:child_process";
-import { promisify } from "node:util";
+import { spawn } from "node:child_process";
 import type { GpuHook } from "../config/config.js";
 
 export type CommandRunner = (command: string) => Promise<void>;
 
-const execAsync = promisify(exec);
-export const shellRunner: CommandRunner = async (command) => {
-  await execAsync(command);
-};
+/** Runs a shell command with the terminal attached, so its progress and any sudo prompt are visible. */
+export const shellRunner: CommandRunner = (command) =>
+  new Promise((resolve, reject) => {
+    const child = spawn(command, { shell: true, stdio: "inherit" });
+    child.on("error", reject);
+    child.on("exit", (code, signal) =>
+      code === 0 ? resolve() : reject(new Error(`"${command}" failed (${signal ?? `exit ${code}`})`)),
+    );
+  });
 
 /**
  * Pauses the owner's listed GPU processes, runs `task`, then resumes them,

@@ -7,6 +7,7 @@ import {
   readLaneUsage,
   serverRoot,
   describeError,
+  errorDetail,
   timeRequest,
   tokensPerSecond,
   waitForReady,
@@ -89,6 +90,12 @@ describe("against a fake vLLM server", () => {
   let fake: Awaited<ReturnType<typeof startFakeVllm>>;
   beforeEach(async () => { fake = await startFakeVllm(); });
   afterEach(async () => { await fake.close(); });
+
+  it("timeRequest reports the server's message when the model isn't loaded", async () => {
+    const r = await timeRequest(fetch as unknown as FetchLike, fake.baseUrl, "gemma", "hi");
+    expect(r.ok).toBe(false);
+    expect(r.error).toBe("HTTP 404: The model `gemma` does not exist.");
+  });
 
   it("readLaneUsage reads /metrics, and returns null when it's missing or down", async () => {
     fake.state.running = 2;
@@ -209,5 +216,19 @@ describe("describeError", () => {
     expect(describeError(new Error("x", { cause: new Error("socket hang up") }))).toBe("Error: x (socket hang up)");
     expect(describeError(new Error("plain"))).toBe("Error: plain");
     expect(describeError(null)).toBe("null");
+  });
+});
+
+describe("errorDetail", () => {
+  const res = (body: string) => ({ text: async () => body });
+  it("pulls the message out of vLLM and OpenAI error shapes", async () => {
+    expect(await errorDetail(res('{"error":{"message":"no model"}}'))).toBe("no model");
+    expect(await errorDetail(res('{"error":"bad"}'))).toBe("bad");
+    expect(await errorDetail(res('{"message":"top"}'))).toBe("top");
+  });
+  it("falls back to trimmed raw text, capped at 200 characters, or empty", async () => {
+    expect(await errorDetail(res("  Not Found \n"))).toBe("Not Found");
+    expect((await errorDetail(res("x".repeat(500)))).length).toBe(200);
+    expect(await errorDetail({ text: async () => { throw new Error("gone"); } })).toBe("");
   });
 });

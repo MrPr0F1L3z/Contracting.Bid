@@ -61,6 +61,6 @@ describe("shellRunner", () => {
   it("runs a shell command and rejects on failure", async () => {
     const { shellRunner } = await import("../src/gpu/hooks.js");
     await expect(shellRunner("true")).resolves.toBeUndefined();
-    await expect(shellRunner("exit 3")).rejects.toThrow();
+    await expect(shellRunner("exit 3")).rejects.toThrow('"exit 3" failed (exit 3)');
   });
 });

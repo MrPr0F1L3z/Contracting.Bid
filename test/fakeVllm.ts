@@ -38,12 +38,22 @@ export async function startFakeVllm(initial: Partial<FakeVllmState> = {}): Promi
     }
     if (req.url === "/v1/chat/completions" && req.method === "POST") {
       state.chatCalls++;
-      req.resume();
+      let raw = "";
+      req.on("data", (c) => (raw += c));
+      req.on("end", () => {
+        const model = (JSON.parse(raw || "{}") as { model?: string }).model;
+        if (model && model !== "qwen") {
+          res.writeHead(404, { "content-type": "application/json" }).end(
+            JSON.stringify({ error: { message: `The model \`${model}\` does not exist.`, code: 404 } }),
+          );
+          return;
+        }
       setTimeout(() => {
         res.writeHead(200, { "content-type": "application/json" }).end(
           JSON.stringify({ model: "qwen", choices: [{ finish_reason: "stop", message: { content: "ready" } }], usage: { prompt_tokens: 5, completion_tokens: state.completionTokens } }),
         );
       }, state.delayMs);
+      });
       return;
     }
     res.writeHead(404).end();

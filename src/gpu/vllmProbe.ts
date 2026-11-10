@@ -89,7 +89,11 @@ export async function timeRequest(
       signal: controller.signal,
     });
     const seconds = (now() - start) / 1000;
-    if (!res.ok) return { ok: false, seconds, completionTokens: 0, tokensPerSec: 0, error: `HTTP ${res.status}` };
+    if (!res.ok) {
+      const detail = await errorDetail(res);
+      const error = detail ? `HTTP ${res.status}: ${detail}` : `HTTP ${res.status}`;
+      return { ok: false, seconds, completionTokens: 0, tokensPerSec: 0, error };
+    }
     const body = (await res.json()) as { usage?: { completion_tokens?: number } };
     const completionTokens = body.usage?.completion_tokens ?? 0;
     return { ok: true, seconds, completionTokens, tokensPerSec: tokensPerSecond(completionTokens, seconds) };
@@ -217,4 +221,22 @@ export function describeError(err: unknown): string {
   const cause = (err as { cause?: { code?: string; message?: string } } | null)?.cause;
   const detail = cause?.code ?? cause?.message;
   return detail ? `${base} (${detail})` : base;
+}
+
+/** The server's error message (vLLM sends {"error":{"message"}} or {"message"}), trimmed to 200 characters. */
+export async function errorDetail(res: { text(): Promise<string> }): Promise<string> {
+  let text: string;
+  try {
+    text = await res.text();
+  } catch {
+    return "";
+  }
+  try {
+    const body = JSON.parse(text) as { error?: { message?: string } | string; message?: string };
+    const msg = typeof body.error === "string" ? body.error : (body.error?.message ?? body.message);
+    if (msg) text = msg;
+  } catch {
+    // not JSON; use the raw text
+  }
+  return text.trim().slice(0, 200);
 }
