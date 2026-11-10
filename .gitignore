@@ -4,3 +4,4 @@ coverage/
 .env
 runs/
 *.log
+data/

@@ -27,7 +27,7 @@ export const DASHBOARD_HTML = `<!doctype html>
   button.act { font:inherit; padding:6px 12px; border-radius:6px; border:1px solid var(--line); background:var(--card); color:var(--ink); cursor:pointer; }
   button.ok { background:var(--ok); border-color:var(--ok); color:#fff; }
   button.bad { color:var(--bad); }
-  input[type=text] { font:inherit; padding:6px 8px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--ink); flex:1; min-width:160px; }
+  input[type=text], input[type=password] { font:inherit; padding:6px 8px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--ink); flex:1; min-width:160px; }
   table { width:100%; border-collapse:collapse; font-size:14px; }
   th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
   th { color:var(--muted); font-weight:600; }
@@ -41,26 +41,32 @@ export const DASHBOARD_HTML = `<!doctype html>
   .grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:8px; }
   .stat { border:1px solid var(--line); border-radius:8px; padding:8px 10px; }
   .stat b { display:block; font-size:18px; }
+  form.login { max-width:340px; margin:48px auto; display:flex; flex-direction:column; gap:10px; }
+  form.login input { flex:none; }
+  @media (max-width:600px) { header { flex-wrap:wrap; gap:8px; } header h1 { width:100%; } }
 </style>
 </head>
 <body>
 <header>
   <h1>Owner Dashboard</h1>
-  <nav>
+  <nav id="nav" hidden>
     <button data-tab="approvals" class="on">Approvals <span id="count" class="badge" hidden>0</span></button>
     <button data-tab="live">Live log</button>
     <button data-tab="runs">Past runs</button>
   </nav>
   <span id="conn" class="muted" style="margin-left:auto"></span>
+  <span id="who" class="muted"></span>
+  <button id="logout" class="act" hidden>Sign out</button>
 </header>
 <main>
-  <section id="approvals"></section>
+  <section id="login" hidden></section>
+  <section id="approvals" hidden></section>
   <section id="live" hidden><div class="card log" id="log"></div></section>
   <section id="runs" hidden></section>
 </main>
 <script>
 (() => {
-  const token = new URLSearchParams(location.hash.slice(1)).get("token") || "";
+  let csrf = "";
   const $ = (id) => document.getElementById(id);
   const el = (tag, attrs = {}, ...kids) => {
     const n = document.createElement(tag);
@@ -73,8 +79,9 @@ export const DASHBOARD_HTML = `<!doctype html>
   };
   const money = (n) => typeof n === "number" ? "$" + n.toLocaleString("en-US") : "";
   const api = async (path, init = {}) => {
-    const res = await fetch(path, { ...init, headers: { "x-dashboard-token": token, "content-type": "application/json", ...(init.headers || {}) } });
+    const res = await fetch(path, { ...init, credentials: "same-origin", headers: { "x-requested-with": "dashboard", "x-csrf-token": csrf, "content-type": "application/json", ...(init.headers || {}) } });
     const body = await res.json().catch(() => ({}));
+    if (res.status === 401 && path !== "/api/login") { showLogin("Your session ended. Sign in again."); throw new Error("Sign in first"); }
     if (!res.ok) throw new Error(body.error || res.statusText);
     return body;
   };
@@ -206,22 +213,65 @@ export const DASHBOARD_HTML = `<!doctype html>
       el("div", { class: "card" }, el("h3", { text: "Events" }), el("div", { class: "row" }, filter), log));
   }
 
+  let es = null;
+  function showLogin(message) {
+    if (es) { es.close(); es = null; }
+    csrf = "";
+    $("nav").hidden = true; $("logout").hidden = true; $("who").textContent = ""; $("conn").textContent = "";
+    for (const id of ["approvals", "live", "runs"]) $(id).hidden = true;
+    const err = el("div", { class: "error", text: message || "" });
+    const user = el("input", { type: "text", name: "username", autocomplete: "username", placeholder: "Login name", required: "" });
+    const pass = el("input", { type: "password", name: "password", autocomplete: "current-password", placeholder: "Password", required: "" });
+    const code = el("input", { type: "text", name: "code", autocomplete: "one-time-code", inputmode: "numeric", pattern: "[0-9 ]{6,7}", placeholder: "6-digit authenticator code", required: "" });
+    const go = el("button", { class: "act ok", type: "submit", text: "Sign in" });
+    const form = el("form", { class: "card login" }, el("h3", { text: "Sign in" }), user, pass, code, go, err);
+    form.addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      go.disabled = true; err.textContent = "";
+      try {
+        const me = await api("/api/login", { method: "POST", body: JSON.stringify({ username: user.value, password: pass.value, code: code.value }) });
+        pass.value = ""; code.value = "";
+        signedIn(me);
+      } catch (e) { err.textContent = e.message; code.value = ""; }
+      finally { go.disabled = false; }
+    });
+    $("login").replaceChildren(form);
+    $("login").hidden = false;
+    user.focus();
+  }
+
+  function signedIn(me) {
+    csrf = me.csrf;
+    $("login").hidden = true; $("login").replaceChildren();
+    $("nav").hidden = false; $("logout").hidden = false; $("who").textContent = me.username;
+    document.querySelectorAll("nav button").forEach((x) => x.classList.toggle("on", x.dataset.tab === "approvals"));
+    $("approvals").hidden = false;
+    connect();
+  }
+
+  $("logout").addEventListener("click", async () => {
+    try { await api("/api/logout", { method: "POST", body: "{}" }); } catch {}
+    showLogin("Signed out.");
+  });
+
   async function connect() {
-    if (!token) { $("approvals").replaceChildren(el("div", { class: "card error", text: "Open the full link the terminal printed; it carries the dashboard token." })); return; }
+    $("log").replaceChildren(); events.length = 0;
     try {
       const state = await api("/api/state");
       pending = state.pending;
       state.events.forEach(addEvent);
       renderApprovals();
     } catch (e) { $("approvals").replaceChildren(el("div", { class: "card error", text: e.message })); return; }
-    const es = new EventSource("/api/stream?token=" + encodeURIComponent(token));
+    es = new EventSource("/api/stream");
     es.addEventListener("open", () => { $("conn").textContent = "Live"; });
-    es.addEventListener("error", () => { $("conn").textContent = "Disconnected"; });
+    es.addEventListener("error", () => { $("conn").textContent = "Disconnected"; api("/api/me").catch(() => {}); });
     es.addEventListener("approval", (m) => { const r = JSON.parse(m.data); pending = pending.filter((p) => p.id !== r.id).concat(r); renderApprovals(); });
     es.addEventListener("decided", (m) => { const d = JSON.parse(m.data); pending = pending.filter((p) => p.id !== d.id); renderApprovals(); });
     es.addEventListener("event", (m) => addEvent(JSON.parse(m.data)));
   }
-  connect();
+  fetch("/api/me", { credentials: "same-origin" })
+    .then(async (res) => (res.ok ? signedIn(await res.json()) : showLogin()))
+    .catch(() => showLogin("Cannot reach the dashboard."));
 })();
 </script>
 </body>

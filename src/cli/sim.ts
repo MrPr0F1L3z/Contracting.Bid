@@ -19,6 +19,7 @@ import { runJobChain, type JobReport } from "../sim/jobChain.js";
 import { stubJobProviders } from "../sim/stubJob.js";
 import { runCloseoutChain, type CloseoutReport } from "../sim/closeoutChain.js";
 import { DashboardServer } from "../dashboard/server.js";
+import { dashboardOptions, runUserCommand, USER_USAGE, type UserCommandDeps } from "./dashboardCli.js";
 import { COMPLEXITIES, type Complexity } from "../opportunities/types.js";
 import { newSeed } from "../sim/rng.js";
 import { STUB_BID_JOB, stubBidProviders } from "../sim/stubBid.js";
@@ -32,6 +33,7 @@ export const USAGE = `Usage:
   pnpm sim job    the same flags as bid, plus [--force-award]
   pnpm sim closeout  the same flags as job
   pnpm sim dashboard [--out DIR]   open the owner dashboard on saved reports
+  pnpm sim user add|passwd|reset-code|remove NAME, or pnpm sim user list   manage dashboard logins
 
   --models   hybrid: President and PM on Claude, other roles on your local vLLM model
              cloud:  President and PM on Claude, other roles on a cheaper Claude
@@ -264,6 +266,8 @@ export interface SimDeps {
   writeReport?: (path: string, json: string) => Promise<void>;
   /** Resolves when a standalone dashboard should stop; defaults to Ctrl+C. */
   untilStopped?: () => Promise<void>;
+  /** For `pnpm sim user`: prompts and the login store. */
+  user?: Omit<UserCommandDeps, "env" | "out">;
   now?: () => Date;
 }
 
@@ -292,6 +296,13 @@ export async function main(argv: string[], deps: SimDeps = {}): Promise<number> 
     out(USAGE);
     return 0;
   }
+  if (argv[0] === "user") {
+    if (argv[1] === "help" || argv[1] === "--help") {
+      out(USER_USAGE);
+      return 0;
+    }
+    return runUserCommand(argv.slice(1), { ...deps.user, env: deps.env ?? process.env, out });
+  }
   let args: SimArgs;
   try {
     args = parseSimArgs(argv);
@@ -308,8 +319,14 @@ export async function main(argv: string[], deps: SimDeps = {}): Promise<number> 
     return 2;
   }
   if (args.command === "dashboard") {
-    const server = new DashboardServer({ runsDir: args.out, port });
-    out(`Owner dashboard: ${await server.start()}`);
+    let server: DashboardServer;
+    try {
+      server = new DashboardServer(await dashboardOptions(env, args.out, port));
+      out(`Owner dashboard: ${await server.start()}`);
+    } catch (err) {
+      out(err instanceof Error ? err.message : String(err));
+      return 2;
+    }
     out("Press Ctrl+C to stop.");
     await (deps.untilStopped ?? (() => new Promise<void>((resolve) => process.once("SIGINT", () => resolve()))))();
     await server.stop();
@@ -407,10 +424,16 @@ async function runBid(
   deps: SimDeps,
   port = 4100,
 ): Promise<number> {
-  const dashboard = args.dashboard && !args.stub && !args.autoApprove ? new DashboardServer({ runsDir: args.out, port }) : null;
-  if (dashboard) {
-    out(`Owner dashboard: ${await dashboard.start()}`);
-    out("Open it to answer approvals; the run waits for you there.");
+  let dashboard: DashboardServer | null = null;
+  if (args.dashboard && !args.stub && !args.autoApprove) {
+    try {
+      dashboard = new DashboardServer(await dashboardOptions(deps.env ?? process.env, args.out, port));
+      out(`Owner dashboard: ${await dashboard.start()}`);
+    } catch (err) {
+      out(err instanceof Error ? err.message : String(err));
+      return 2;
+    }
+    out("Sign in there to answer approvals; the run waits for you.");
   }
   const isJob = args.command === "job" || args.command === "closeout";
   const stubs = stubJobProviders(profile);

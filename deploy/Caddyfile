@@ -1,0 +1,10 @@
+# Serves the owner dashboard over HTTPS. Caddy gets and renews the
+# certificate for DASHBOARD_DOMAIN from Let's Encrypt on its own.
+{$DASHBOARD_DOMAIN} {
+	encode gzip
+	reverse_proxy 127.0.0.1:{$DASHBOARD_PORT} {
+		# Send live events (server-sent events) straight through.
+		flush_interval -1
+	}
+	header -Server
+}
