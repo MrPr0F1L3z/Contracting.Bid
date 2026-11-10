@@ -36,7 +36,7 @@ describe("stubJobMove", () => {
     expect(names(stubJobMove(ask("Written request ... Hire a Project Manager now", ["propose_hire"]), "m"))).toEqual([["propose_hire", "project_manager"]]);
     expect(names(stubJobMove(ask("Written request ... Hire an Estimator and a Procurement agent", ["propose_hire"]), "m"))).toEqual([["propose_hire", "estimator"], ["propose_hire", "procurement"]]);
     expect(names(stubJobMove(ask("Written request ... Hire a Scheduler now", ["propose_hire"]), "m"))).toEqual([["propose_hire", "scheduler"]]);
-    expect(stubJobMove(ask("Written request ... Hire a Bookkeeper", ["propose_hire"]), "m").toolCalls).toEqual([]);
+    expect(stubJobMove(ask("Written request ... Hire a Janitor", ["propose_hire"]), "m").toolCalls).toEqual([]);
     expect(stubJobMove(ask("Hire the company's HR representative now.", ["propose_hire"], [assistant, result("ok")]), "m").text).toBe("Done.");
   });
 

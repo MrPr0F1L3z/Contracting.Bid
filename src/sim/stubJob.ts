@@ -8,6 +8,9 @@ import { STUB_HR_INSTRUCTIONS, STUB_PM_INSTRUCTIONS } from "./stubHiring.js";
 export const STUB_SCHEDULER_INSTRUCTIONS =
   "Sequence each awarded job's trades so each starts only when the work it depends on is done, and keep the plan inside the contract time.";
 
+export const STUB_BOOKKEEPER_INSTRUCTIONS =
+  "Invoice each finished job exactly, pay every subcontractor and vendor bill once with owner approval, and collect what the government owes.";
+
 /** The first price the scripted PM asks for a change order; each retry asks 25% less. */
 export const STUB_CHANGE_ORDER_USD = 12_000;
 
@@ -32,6 +35,7 @@ export function stubJobMove(request: ModelRequest, model: string): ModelResponse
       return calls(hire("estimator", STUB_ESTIMATOR_INSTRUCTIONS, 0.5, "s-est"), hire("procurement", STUB_PROCUREMENT_INSTRUCTIONS, 0.5, "s-proc"));
     }
     if (task.includes("Scheduler")) return calls(hire("scheduler", STUB_SCHEDULER_INSTRUCTIONS, 0.5, "s-sch"));
+    if (task.includes("Bookkeeper")) return calls(hire("bookkeeper", STUB_BOOKKEEPER_INSTRUCTIONS, 0.5, "s-bk"));
     return done;
   }
   if (tools.has("decide_opportunity") && turn === 0) {
@@ -71,6 +75,23 @@ export function stubJobMove(request: ModelRequest, model: string): ModelResponse
     const settled = last?.type === "tool_result" && (!last.isError || last.content.includes("last try"));
     if (turn > 0 && settled) return done;
     return calls({ name: "price_change_order", id: `s-co${turn}`, input: { price_usd: Math.round(STUB_CHANGE_ORDER_USD * 0.75 ** turn), days: 2, justification: "Cost plus 15%." } });
+  }
+  if (tools.has("submit_invoice")) {
+    const money = (label: string) => Number(new RegExp(`${label}: \\$([\\d,]+)`).exec(task)?.[1]?.replace(/,/g, "") ?? 0);
+    if (turn === 0) {
+      const due = money("Contract price") + money("Approved change orders") - money("Liquidated damages assessed");
+      return calls({ name: "submit_invoice", id: "s-inv", input: { amount_usd: due } });
+    }
+    if (turn === 1) return calls({ name: "pay_bills", id: "s-pay", input: { bill_ids: [...task.matchAll(/^- (B-\d+):/gm)].map((m) => m[1]) } });
+    return done;
+  }
+  if (tools.has("resolve_receivable") && turn === 0) {
+    const recover: Record<string, string> = { "late-payment": "claim_interest", "short-payment": "submit_closeout_documents" };
+    const ids = [...task.matchAll(/^(late-payment|short-payment):/gm)].map((m) => m[1]!);
+    return calls(...ids.map((id, i) => ({ name: "resolve_receivable", id: `s-ar${i}`, input: { issue_id: id, option_id: recover[id]! } })));
+  }
+  if (tools.has("close_project") && turn === 0) {
+    return calls({ name: "close_project", id: "s-close", input: { summary: "Billed, paid and settled." } });
   }
   return done;
 }

@@ -91,6 +91,15 @@ pnpm sim job --auto-approve --force-award    # unattended: every gate approved, 
 
 `job` takes the same flags as `bid`. If the bid wins (or `--force-award` is set and the bid was responsive), the PM gets the prime contract and the subcontracts signed (you approve both), HR hires a Scheduler (you approve), the Scheduler sequences the trades, and the PM resolves each site problem the seed drew: late deliveries, weather, sub no-shows, double-booked crews, failed inspections, change orders and hidden conditions. Each priced change order goes to you before the contracting officer sees it. The run ends with the job's final account: revenue, cost, profit, days late and liquidated damages.
 
+## Close out a job
+
+```bash
+pnpm sim closeout --stub --seed 3 --force-award   # dry run of the whole lifecycle, from hiring to a closed job
+pnpm sim closeout --job STUB-E02 --force-award    # the same with real models; you approve each gate
+```
+
+`closeout` takes the same flags as `job`. After the job finishes, HR hires a Bookkeeper (you approve). The Bookkeeper submits the final invoice, which must equal the contract price plus approved change orders, less liquidated damages; a wrong invoice is returned and delays payment. The Bookkeeper then pays every subcontractor and vendor bill, and you approve each payment run. The government pays in 30 days. If the seed drew `late-payment`, it pays late and holds back part of the invoice, and the Bookkeeper decides whether to claim Prompt Payment Act interest and whether to submit closeout documents to release the money held back. The PM then asks you to close the project. The report ends with the cash position: received, paid out and cash profit.
+
 ## Tests
 
 Every function has unit tests. Tests use scripted stub models and saved fixtures, so they never call Claude, vLLM or SAM.gov and cost nothing.

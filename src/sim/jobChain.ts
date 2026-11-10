@@ -1,8 +1,8 @@
 import { kickoffTools, priceChangeOrderTool, problemBrief, resolveProblemTool, setScheduleTool, type JobState } from "../agents/jobTools.js";
 import { SiteWorld, type JobAccount, type Resolution, type ScheduleLine, type SiteProblem } from "../world/site.js";
-import { bidFields, bidStage, type BidChainOptions, type BidOutcome, type BidReport } from "./bidChain.js";
+import { bidFields, bidStage, type BidChainOptions, type BidOutcome, type BidReport, type BidStage } from "./bidChain.js";
 import { Company, HR_SYSTEM, hireRequestFromPresident, systemFor, type BaseReport } from "./company.js";
-import { drawProblems } from "./problems.js";
+import { drawProblems, type ScheduledProblem } from "./problems.js";
 import { SeededRng } from "./rng.js";
 
 export const JOB_PM_SYSTEM = `You are the Project Manager of a general contracting company run entirely by AI agents. \
@@ -46,26 +46,44 @@ export async function runJobChain(o: JobChainOptions): Promise<JobReport> {
   const rng = new SeededRng(o.seed);
   const problems = drawProblems(rng);
   c.event("run_started", "owner", { seed: o.seed, slice: "execution", problems: problems.map((p) => p.problem.id) });
+  const stage = await jobStage(c, o, rng, problems);
+  c.event("run_finished", "owner", { outcome: stage.outcome, reason: stage.reason, spentUsd: c.runBudget.spentUsd() });
+  return { ...c.baseReport(), ...jobFields(stage, problems) };
+}
 
+/** Where the job stage ended, with the bid stage before it and the site, if the job started. */
+export interface JobStage {
+  outcome: JobOutcome;
+  reason: string;
+  bid: BidStage;
+  awardForced: boolean;
+  site: SiteWorld | null;
+  siteProblems: SiteProblem[];
+  state: JobState;
+}
+
+/** The bid and job fields of a report, from a finished job stage. */
+export function jobFields(j: JobStage, problems: readonly ScheduledProblem[]): Omit<JobReport, keyof BaseReport> {
+  return {
+    ...bidFields(j.bid, problems),
+    outcome: j.outcome,
+    reason: j.reason,
+    awardForced: j.awardForced,
+    schedule: j.site?.scheduled() ?? null,
+    siteProblems: j.siteProblems.map(({ id, trade, day, description }) => ({ id, trade, day, description })),
+    resolutions: j.site?.resolved() ?? [],
+    account: j.site && j.site.scheduled() && j.state.subcontractsIssued ? j.site.finalAccount() : null,
+  };
+}
+
+/** Runs slices 1 to 3 on a company: hires, bid, and the awarded job through its final account. */
+export async function jobStage(c: Company, o: JobChainOptions, rng: SeededRng, problems: readonly ScheduledProblem[]): Promise<JobStage> {
   const stage = await bidStage(c, o, rng, problems);
   const state: JobState = { changeOrderTries: {} };
   let site: SiteWorld | null = null;
   let siteProblems: SiteProblem[] = [];
   let awardForced = false;
-  const finish = (outcome: JobOutcome, reason: string): JobReport => {
-    c.event("run_finished", "owner", { outcome, reason, spentUsd: c.runBudget.spentUsd() });
-    return {
-      ...c.baseReport(),
-      ...bidFields(stage, problems),
-      outcome,
-      reason,
-      awardForced,
-      schedule: site?.scheduled() ?? null,
-      siteProblems: siteProblems.map(({ id, trade, day, description }) => ({ id, trade, day, description })),
-      resolutions: site?.resolved() ?? [],
-      account: site && site.scheduled() && state.subcontractsIssued ? site.finalAccount() : null,
-    };
-  };
+  const finish = (outcome: JobOutcome, reason: string): JobStage => ({ outcome, reason, bid: stage, awardForced, site, siteProblems, state });
 
   if (stage.outcome !== "awarded") {
     const responsive = stage.outcome === "lost" && stage.award?.rank !== null;

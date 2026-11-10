@@ -17,6 +17,7 @@ import { runHiringChain, type HiringReport } from "../sim/hiringChain.js";
 import { runBidChain, type BidReport } from "../sim/bidChain.js";
 import { runJobChain, type JobReport } from "../sim/jobChain.js";
 import { stubJobProviders } from "../sim/stubJob.js";
+import { runCloseoutChain, type CloseoutReport } from "../sim/closeoutChain.js";
 import { COMPLEXITIES, type Complexity } from "../opportunities/types.js";
 import { newSeed } from "../sim/rng.js";
 import { STUB_BID_JOB, stubBidProviders } from "../sim/stubBid.js";
@@ -28,6 +29,7 @@ export const USAGE = `Usage:
   pnpm sim bid    [--models hybrid|cloud] [--job ID | --complexity easy|moderate|complex]
                   [--auto-approve] [--stub] [--seed N] [--out DIR]
   pnpm sim job    the same flags as bid, plus [--force-award]
+  pnpm sim closeout  the same flags as job
 
   --models   hybrid: President and PM on Claude, other roles on your local vLLM model
              cloud:  President and PM on Claude, other roles on a cheaper Claude
@@ -38,7 +40,7 @@ export const USAGE = `Usage:
   --job ID   bid only: bid this solicitation (default: picked by seed)
   --complexity  bid only: pick only among jobs at this complexity
   --auto-approve  bid and job: approve every owner gate without asking (simulation only)
-  --force-award   job only: if a responsive bid loses on price, award it anyway (simulation only)
+  --force-award   job and closeout: if a responsive bid loses on price, award it anyway (simulation only)
   --out DIR  where to write reports (default: runs)
 
 Hybrid runs (opt in with --models hybrid) check vLLM first and restart it if it is busy or slow (see pnpm gpu).
@@ -46,11 +48,12 @@ The President→HR and HR→PM hires are automatic. In "hiring", any other hire 
 you here; in "bench", other hires are declined so runs stay comparable. In "bid", pursuing
 the job, each later hire and the bid price ask you here unless you pass --auto-approve.
 "job" bids, then runs an awarded job: contracts, a Scheduler hire, and each site problem
-the seed brings, ending with the job's final account. A stub bid or job run always bids
-${STUB_BID_JOB} and approves every gate.`;
+the seed brings, ending with the job's final account. "closeout" runs the job, then a
+Bookkeeper invoices, pays every bill and collects, and the PM closes the project. A stub
+bid, job or closeout run always bids ${STUB_BID_JOB} and approves every gate.`;
 
 export interface SimArgs {
-  command: "hiring" | "bench" | "bid" | "job";
+  command: "hiring" | "bench" | "bid" | "job" | "closeout";
   forceAward?: boolean;
   profiles: Profile[];
   runs: number;
@@ -71,8 +74,8 @@ function parseCount(flag: string, value: string, min: number): number {
 /** Parses a sim command line. Throws on anything unknown. */
 export function parseSimArgs(argv: string[]): SimArgs {
   const [command, ...args] = argv;
-  if (command !== "hiring" && command !== "bench" && command !== "bid" && command !== "job") throw new Error(`Unknown command "${command ?? ""}"`);
-  const bidLike = command === "bid" || command === "job";
+  if (command !== "hiring" && command !== "bench" && command !== "bid" && command !== "job" && command !== "closeout") throw new Error(`Unknown command "${command ?? ""}"`);
+  const bidLike = command === "bid" || command === "job" || command === "closeout";
   const parsed: SimArgs = {
     command,
     profiles: command === "bench" ? [...PROFILES] : ["cloud"],
@@ -87,7 +90,7 @@ export function parseSimArgs(argv: string[]): SimArgs {
       continue;
     }
     if (arg === "--force-award") {
-      if (command !== "job") throw new Error("--force-award is only for job");
+      if (command !== "job" && command !== "closeout") throw new Error("--force-award is only for job and closeout");
       parsed.forceAward = true;
       continue;
     }
@@ -203,6 +206,30 @@ export function formatJobReport(report: JobReport): string[] {
   return lines;
 }
 
+/** One-line-per-item summary of a closeout run: the job lines, then billing, payables and collection. */
+export function formatCloseoutReport(report: CloseoutReport): string[] {
+  const jobLines = formatJobReport({ ...report, outcome: report.outcome === "closed" ? "completed" : report.outcome } as JobReport);
+  const head = jobLines[0]!.replace(/: COMPLETED in/, ": CLOSED in");
+  const lines = [head, ...jobLines.slice(1, -1)];
+  if (report.invoice) {
+    const back = report.invoice.rejections > 0 ? ` after ${plural(report.invoice.rejections, "returned invoice")}` : "";
+    lines.push(`  Invoice: ${money(report.invoice.amountUsd)} accepted${back}`);
+  }
+  if (report.bills.length > 0) {
+    const paid = report.bills.filter((b) => b.paid);
+    lines.push(`  Bills: ${paid.length} of ${report.bills.length} paid, ${money(paid.reduce((a, b) => a + b.amountUsd, 0))}`);
+  }
+  if (report.payment) {
+    const p = report.payment;
+    lines.push(`  Payment: ${money(p.paidUsd)} on day ${p.paidOnDay}${p.daysLate > 0 ? ` (${plural(p.daysLate, "day")} late)` : ""}${p.withheldUsd > 0 ? `, ${money(p.withheldUsd)} withheld` : ""}`);
+  }
+  for (const st of report.settlements) lines.push(`  Receivable ${st.issueId}: ${st.option}, recovers ${money(st.recoversUsd)}`);
+  const c = report.closeout;
+  if (c) lines.push(`  Cash: received ${money(c.receivedUsd)}, paid out ${money(c.paidOutUsd)}, cash profit ${c.cashProfitUsd < 0 ? "-" : ""}${money(Math.abs(c.cashProfitUsd))}`);
+  lines.push(jobLines.at(-1)!);
+  return lines;
+}
+
 export interface SimDeps {
   env?: Record<string, string | undefined>;
   out?: (line: string) => void;
@@ -298,7 +325,7 @@ export async function main(argv: string[], deps: SimDeps = {}): Promise<number> 
 
   const profile = args.profiles[0]!;
   const seed = args.seed ?? newSeed();
-  if (args.command === "bid" || args.command === "job") return runBid(args, profile, seed, config, stamp, write, out, deps);
+  if (args.command === "bid" || args.command === "job" || args.command === "closeout") return runBid(args, profile, seed, config, stamp, write, out, deps);
   let rl: ReturnType<typeof createInterface> | undefined;
   const approver =
     deps.approver ??
@@ -340,7 +367,7 @@ async function runBid(
   out: (line: string) => void,
   deps: SimDeps,
 ): Promise<number> {
-  const isJob = args.command === "job";
+  const isJob = args.command === "job" || args.command === "closeout";
   const stubs = isJob ? stubJobProviders(profile) : stubBidProviders(profile);
   const providers = args.stub ? stubs : (deps.providers ?? realProviders(config, profile));
   let rl: ReturnType<typeof createInterface> | undefined;
@@ -365,10 +392,15 @@ async function runBid(
       ...(job !== undefined ? { noticeId: job } : {}),
       ...(args.complexity !== undefined ? { complexity: args.complexity } : {}),
     };
-    const report = isJob ? await runJobChain({ ...options, forceAward: args.forceAward ?? false }) : await runBidChain(options);
+    const forced = { ...options, forceAward: args.forceAward ?? false };
+    const report =
+      args.command === "closeout" ? await runCloseoutChain(forced) : isJob ? await runJobChain(forced) : await runBidChain(options);
     const path = join(args.out, `${report.runId}.json`);
     await write(path, JSON.stringify(report, null, 2));
-    const lines = isJob ? formatJobReport(report as JobReport) : formatBidReport(report as BidReport);
+    const lines =
+      args.command === "closeout"
+        ? formatCloseoutReport(report as CloseoutReport)
+        : isJob ? formatJobReport(report as JobReport) : formatBidReport(report as BidReport);
     for (const line of lines) out(line);
     out(`Report: ${path}`);
     return report.outcome === "incomplete" ? 1 : 0;
