@@ -28,6 +28,11 @@ export interface DashboardOptions {
   behindProxy?: boolean;
   /** Clock, for tests. */
   now?: () => number;
+  /** Where saved runs come from instead of the reports folder, such as the database. */
+  runs?: {
+    list(): Promise<RunSummary[]>;
+    read(runId: string): Promise<Record<string, unknown> | null>;
+  };
 }
 
 const LOOPBACK = new Set(["127.0.0.1", "::1", "localhost"]);
@@ -162,6 +167,7 @@ export class DashboardServer {
   }
 
   async listRuns(): Promise<RunSummary[]> {
+    if (this.o.runs) return this.o.runs.list();
     let files: string[];
     try {
       files = (await readdir(this.o.runsDir)).filter((f) => REPORT_FILE.test(f));
@@ -183,6 +189,7 @@ export class DashboardServer {
    */
   async readRun(file: string): Promise<Record<string, unknown> | null> {
     if (!REPORT_FILE.test(file) || basename(file) !== file) return null;
+    if (this.o.runs) return this.o.runs.read(file.replace(/\.json$/, ""));
     try {
       const report = JSON.parse(await readFile(join(this.o.runsDir, file), "utf8")) as unknown;
       if (typeof report !== "object" || report === null || Array.isArray(report)) return null;

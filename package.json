@@ -15,15 +15,18 @@
     "test:watch": "vitest",
     "check": "pnpm typecheck && pnpm test",
     "gpu": "tsc -p tsconfig.json && node dist/src/cli/vllm.js",
-    "sim": "tsc -p tsconfig.json && node dist/src/cli/sim.js"
+    "sim": "tsc -p tsconfig.json && node dist/src/cli/sim.js",
+    "db": "tsc -p tsconfig.json && node dist/src/cli/db.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.7.0",
-    "openai": "^7.55.0"
+    "openai": "^7.55.0",
+    "pg": "^8.23.1"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.16",
     "@types/node": "^22.20.5",
+    "@types/pg": "^8.23.1",
     "@vitest/coverage-v8": "^5.1.0",
     "typescript": "~5.9.3",
     "vitest": "^5.1.0"

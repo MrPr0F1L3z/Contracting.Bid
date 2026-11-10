@@ -8,6 +8,20 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    services:
+      # A throwaway Postgres for test/pgdb.test.ts, which drops and recreates its schema.
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test"
+          --health-interval 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -19,3 +33,5 @@ jobs:
       - run: pnpm typecheck
       # Tests use stub models and saved fixtures only. CI never calls Claude, vLLM or SAM.gov.
       - run: pnpm test
+        env:
+          TEST_DATABASE_URL: postgres://test:test@localhost:5432/test
