@@ -114,8 +114,10 @@ export function problemBrief(site: SiteWorld, p: SiteProblem): string {
   const header = `Day ${p.day + 1} of ${site.contractDays} on ${site.bid.opportunity.noticeId}: ${p.description}`;
   const terms = `Liquidated damages are ${usd(site.ldPerDayUsd)} per working day past the contract time.`;
   if (p.change) {
+    const sub = site.subcontracts.get(p.trade);
     return [
       header,
+      `${sub?.subcontractor ?? `The ${p.trade} subcontractor`} quotes ${usd(p.change.costUsd)} and ${p.change.days} working days for the added work.`,
       p.change.initiatedBy === "government"
         ? "The government must pay for directed changes. Price the change order with price_change_order: cost plus reasonable overhead and profit, and the working days it adds."
         : "This is a differing site condition. Request a change order with price_change_order: cost plus reasonable overhead and profit, and the working days it adds.",
