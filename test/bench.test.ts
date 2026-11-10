@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { formatBench, summarizeBench } from "../src/sim/bench.js";
-import { PROFILES, isProfile, roleModelsFor, usesLocal } from "../src/config/profiles.js";
+import { PROFILES, isProfile, roleModelsFor, usesGpu } from "../src/config/profiles.js";
 import { DEFAULT_ROLE_MODELS } from "../src/config/roles.js";
 import type { HiringReport } from "../src/sim/hiringChain.js";
 
@@ -11,15 +11,16 @@ const report = (profile: string, sec: number, usd: number, outcome = "complete",
   }) as unknown as HiringReport;
 
 describe("profiles", () => {
-  it("hybrid is the default role map; cloud puts every role on Claude", () => {
+  it("both profiles keep executives on the claude target and the rest on the worker target", () => {
     expect(PROFILES).toEqual(["hybrid", "cloud"]);
     expect(roleModelsFor("hybrid")).toEqual(DEFAULT_ROLE_MODELS);
-    expect(Object.values(roleModelsFor("cloud")).every((t) => t === "claude")).toBe(true);
-    expect(Object.keys(roleModelsFor("cloud"))).toEqual(Object.keys(DEFAULT_ROLE_MODELS));
+    expect(roleModelsFor("cloud")).toEqual(DEFAULT_ROLE_MODELS);
+    expect(roleModelsFor("cloud").president).toBe("claude");
+    expect(roleModelsFor("cloud").hr).toBe("local");
   });
-  it("usesLocal and isProfile", () => {
-    expect(usesLocal(roleModelsFor("hybrid"))).toBe(true);
-    expect(usesLocal(roleModelsFor("cloud"))).toBe(false);
+  it("usesGpu and isProfile", () => {
+    expect(usesGpu("hybrid")).toBe(true);
+    expect(usesGpu("cloud")).toBe(false);
     expect(isProfile("cloud")).toBe(true);
     expect(isProfile("gpu")).toBe(false);
   });

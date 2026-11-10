@@ -54,10 +54,11 @@ describe("approvers", () => {
 
 describe("realProviders", () => {
   const config = loadConfig({ ANTHROPIC_API_KEY: "test" });
-  it("cloud uses Claude for both targets and never builds a vLLM client", () => {
+  it("cloud puts the worker target on the cheaper Claude model and never builds a vLLM client", () => {
     const p = realProviders(config, "cloud");
-    expect(p.claude.name).toBe("anthropic");
-    expect(p.local).toBe(p.claude);
+    expect([p.claude.name, p.claude.model]).toEqual(["anthropic", "claude-opus-5-5"]);
+    expect([p.local.name, p.local.model]).toEqual(["anthropic", "claude-sonnet-5-5"]);
+    expect(realProviders(loadConfig({ CLAUDE_WORKER_MODEL: "claude-haiku-5-5" }), "cloud").local.model).toBe("claude-haiku-5-5");
   });
   it("hybrid puts the local target on the lane-limited vLLM model", () => {
     const p = realProviders(config, "hybrid");
@@ -109,7 +110,7 @@ describe("pnpm sim (functional)", () => {
       const path = join(dir, `hiring-${profile}-2026-11-10T15-00-00-000Z-9.json`);
       const report = JSON.parse(await readFile(path, "utf8")) as HiringReport;
       expect(report).toMatchObject({ outcome: "complete", seed: 9, profile });
-      expect(report.tasks.map((t) => t.model)).toEqual(profile === "cloud" ? ["stub-claude", "stub-claude"] : ["stub-claude", "stub-local"]);
+      expect(report.tasks.map((t) => t.model)).toEqual(profile === "cloud" ? ["stub-claude", "stub-claude-worker"] : ["stub-claude", "stub-local"]);
       expect(lines.at(-1)).toBe(`Report: ${path}`);
     });
   }
@@ -149,6 +150,7 @@ describe("pnpm sim (functional)", () => {
   it("exits 1 when the chain is incomplete", async () => {
     const providers = stubHiringProviders("cloud");
     providers.claude = new ScriptedProvider([textResponse("Not today.")]);
+    expect(providers.local.model).toBe("stub-claude-worker");
     const code = await main(["hiring", "--models", "cloud"], { out, env: {}, now, providers, writeReport: async () => undefined });
     expect(code).toBe(1);
     expect(lines.find((l) => l.includes("INCOMPLETE"))).toMatch(/did not hire HR/);

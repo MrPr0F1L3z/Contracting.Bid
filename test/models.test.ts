@@ -102,6 +102,14 @@ describe("AnthropicProvider", () => {
     expect(params.tools).toHaveLength(1);
   });
 
+  it("sends refusal fallbacks to Sonnet 5.5 but not to Haiku 5.5, which rejects them", () => {
+    const create = async () => { throw new Error("unused"); };
+    expect(new AnthropicProvider("claude-sonnet-5-5", { create }).buildParams(request).fallbacks).toBe("default");
+    const haiku = new AnthropicProvider("claude-haiku-5-5", { create }).buildParams(request);
+    expect(haiku).not.toHaveProperty("fallbacks");
+    expect(haiku).not.toHaveProperty("betas");
+  });
+
   it("omits tools when none are given and calls the injected create", async () => {
     let seen: Record<string, unknown> | undefined;
     const p = new AnthropicProvider("claude-opus-5-5", {

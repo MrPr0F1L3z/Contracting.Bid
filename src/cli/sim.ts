@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import type { Approver } from "../agents/hiringTools.js";
 import { loadConfig, type AppConfig } from "../config/config.js";
-import { PROFILES, isProfile, roleModelsFor, usesLocal, type Profile } from "../config/profiles.js";
+import { PROFILES, isProfile, roleModelsFor, usesGpu, type Profile } from "../config/profiles.js";
 import type { ModelTarget } from "../config/roles.js";
 import { shellRunner, type CommandRunner } from "../gpu/hooks.js";
 import { ensureVllm, type FetchLike } from "../gpu/vllmProbe.js";
@@ -22,7 +22,8 @@ export const USAGE = `Usage:
   pnpm sim bench  [--models hybrid,cloud] [--runs N] [--stub] [--out DIR]
 
   --models   hybrid: President and PM on Claude, other roles on your local vLLM model (default)
-             cloud:  every role on Claude; the GPU is not touched
+             cloud:  President and PM on Claude, other roles on a cheaper Claude
+                     model (CLAUDE_WORKER_MODEL, default claude-sonnet-5-5); no GPU
   --runs N   bench only: runs per profile (default 3), alternating profiles
   --stub     scripted models: no API key, GPU or cost (a dry run)
   --seed N   hiring only: seed to record with the run (random if left out)
@@ -128,7 +129,7 @@ async function defaultWrite(path: string, json: string): Promise<void> {
 /** The real providers for a profile. Cloud never builds a vLLM client. */
 export function realProviders(config: AppConfig, profile: Profile): Record<ModelTarget, ModelProvider> {
   const claude = new AnthropicProvider(config.claudeModel);
-  if (profile === "cloud") return { claude, local: claude };
+  if (profile === "cloud") return { claude, local: new AnthropicProvider(config.claudeWorkerModel) };
   return {
     claude,
     local: new LimitedProvider(
@@ -158,7 +159,7 @@ export async function main(argv: string[], deps: SimDeps = {}): Promise<number> 
   const write = deps.writeReport ?? defaultWrite;
   const stamp = (deps.now ?? (() => new Date()))().toISOString().replace(/[:.]/g, "-");
 
-  if (!args.stub && args.profiles.some((p) => usesLocal(roleModelsFor(p)))) {
+  if (!args.stub && args.profiles.some(usesGpu)) {
     await ensureVllm({
       baseUrl: config.vllmBaseUrl,
       model: config.vllmModel,

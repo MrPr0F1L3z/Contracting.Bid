@@ -63,7 +63,7 @@ The commands call `/usr/local/bin/vllm_service` directly, because the `vllm` ali
 ```bash
 pnpm sim hiring --stub             # dry run with scripted models: no API key, GPU or cost
 pnpm sim hiring                    # hybrid: President and PM on Claude, other roles on your local vLLM model
-pnpm sim hiring --models cloud     # cloud: every role on Claude; the GPU is not touched
+pnpm sim hiring --models cloud     # cloud: President and PM on Opus, other roles on CLAUDE_WORKER_MODEL (Sonnet 5.5); no GPU
 pnpm sim bench --runs 3            # 3 runs of each profile, alternating, then a time and cost comparison
 ```
 

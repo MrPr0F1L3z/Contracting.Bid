@@ -11,6 +11,18 @@ import type {
 
 export const DEFAULT_CLAUDE_MODEL = "claude-opus-5-5";
 
+/** Cheaper Claude model for roles that are not executive or reasoning-heavy (cloud profile). */
+export const DEFAULT_CLAUDE_WORKER_MODEL = "claude-sonnet-5-5";
+
+/** Models that accept the server-side refusal fallback; others (e.g. Haiku 5.5) reject it. */
+export const SERVER_FALLBACK_MODELS: ReadonlySet<string> = new Set([
+  "claude-fable-5-2",
+  "claude-fable-5-1",
+  "claude-opus-5-5",
+  "claude-opus-5",
+  "claude-sonnet-5-5",
+]);
+
 /** Converts one neutral content part to an Anthropic block. */
 function toAnthropicBlock(part: ContentPart): Anthropic.ContentBlockParam {
   switch (part.type) {
@@ -132,8 +144,7 @@ export class AnthropicProvider implements ModelProvider {
       ...(tools.length > 0 ? { tools } : {}),
       thinking: { type: "adaptive" },
       output_config: { effort: this.effort },
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
+      ...(SERVER_FALLBACK_MODELS.has(this.model) ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" } : {}),
     };
   }
 

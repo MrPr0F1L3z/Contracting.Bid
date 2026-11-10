@@ -23,19 +23,14 @@ const hrScript = (model: string) => [
 ];
 
 /**
- * Scripted models for a dry run of the hiring chain with no API key or GPU.
- * Hybrid: Claude plays the President and the local model plays HR.
- * Cloud: Claude plays both, in order, and the local model is never called.
+ * Scripted models for a dry run of the hiring chain with no API key or GPU:
+ * Claude plays the President, and the worker target (the local model in
+ * hybrid, a cheaper Claude model in cloud) plays HR.
  */
 export function stubHiringProviders(profile: Profile = "hybrid"): Record<ModelTarget, ScriptedProvider> {
-  if (profile === "cloud") {
-    return {
-      claude: new ScriptedProvider([...presidentScript("stub-claude"), ...hrScript("stub-claude")], "stub-claude"),
-      local: new ScriptedProvider([], "stub-local"),
-    };
-  }
+  const worker = profile === "cloud" ? "stub-claude-worker" : "stub-local";
   return {
     claude: new ScriptedProvider(presidentScript("stub-claude"), "stub-claude"),
-    local: new ScriptedProvider(hrScript("stub-local"), "stub-local"),
+    local: new ScriptedProvider(hrScript(worker), worker),
   };
 }
