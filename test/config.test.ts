@@ -55,3 +55,19 @@ describe("roles", () => {
     expect(isRole("janitor")).toBe(false);
   });
 });
+
+describe("vllm config", async () => {
+  const { positive } = await import("../src/config/config.js");
+  it("defaults to 4 lanes, 60s, 5 tokens/s, vllm stop / vllm start big", () => {
+    expect(loadConfig({}).vllm).toEqual({
+      maxLanes: 4, maxResponseSec: 60, minTokensPerSec: 5, stopCommand: "vllm stop", startCommand: "vllm start big",
+    });
+  });
+
+  it("positive() parses, defaults and rejects", () => {
+    expect(positive("X", undefined, 3)).toBe(3);
+    expect(positive("X", " ", 3)).toBe(3);
+    expect(positive("X", "8", 3)).toBe(8);
+    expect(() => positive("X", "0", 3)).toThrow(/X must be/);
+  });
+});

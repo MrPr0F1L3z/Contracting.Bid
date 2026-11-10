@@ -13,6 +13,13 @@ export interface AppConfig {
   databaseUrl: string;
   runBudgetUsd: number;
   gpuHooks: GpuHook[];
+  vllm: {
+    maxLanes: number;
+    maxResponseSec: number;
+    minTokensPerSec: number;
+    stopCommand: string;
+    startCommand: string;
+  };
 }
 
 /**
@@ -32,6 +39,13 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     databaseUrl: env.DATABASE_URL || "postgres://contracting:contracting@localhost:5432/contracting",
     runBudgetUsd: budget,
     gpuHooks: parseGpuHooks(env.GPU_PAUSE_HOOKS),
+    vllm: {
+      maxLanes: positive("VLLM_MAX_LANES", env.VLLM_MAX_LANES, 4),
+      maxResponseSec: positive("VLLM_MAX_RESPONSE_SEC", env.VLLM_MAX_RESPONSE_SEC, 60),
+      minTokensPerSec: positive("VLLM_MIN_TOKENS_PER_SEC", env.VLLM_MIN_TOKENS_PER_SEC, 5),
+      stopCommand: env.VLLM_STOP_CMD || "vllm stop",
+      startCommand: env.VLLM_START_CMD || "vllm start big",
+    },
   };
 }
 
@@ -58,3 +72,10 @@ export function parseGpuHooks(raw: string | undefined): GpuHook[] {
   });
 }
 
+/** Parses a positive number with a default when unset. */
+export function positive(name: string, raw: string | undefined, fallback: number): number {
+  if (raw === undefined || raw.trim() === "") return fallback;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value <= 0) throw new Error(`${name} must be a positive number, got "${raw}"`);
+  return value;
+}

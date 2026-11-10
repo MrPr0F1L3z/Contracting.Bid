@@ -42,6 +42,22 @@ GPU_PAUSE_HOOKS='[{"pause":"sudo systemctl stop ollama","resume":"sudo systemctl
 
 The runner runs the stop commands before a simulation and always runs the start commands afterwards, in reverse order, even if the run fails. It runs only the commands you list.
 
+### Reuse or restart vLLM
+
+Before a run, the vLLM check reads `/metrics` for running and queued requests and times one short test request. It reuses the running server unless one of these is true, in which case it runs `vllm stop` then `vllm start big` and waits for the server to come up:
+
+- all lanes are busy (`VLLM_MAX_LANES`, default 4, should match `--max-num-seqs`) or requests are queued
+- the test request takes longer than `VLLM_MAX_RESPONSE_SEC` (default 60)
+- generation is slower than `VLLM_MIN_TOKENS_PER_SEC` (default 5)
+
+```bash
+pnpm vllm check           # report lanes and speed, change nothing
+pnpm vllm ensure          # reuse, or stop and start fresh
+pnpm vllm loadtest 3 3    # 3 background requests, then time 3 more while they run
+```
+
+Override the commands with `VLLM_STOP_CMD` and `VLLM_START_CMD`.
+
 ## Tests
 
 Every function has unit tests. Tests use scripted stub models and saved fixtures, so they never call Claude, vLLM or SAM.gov and cost nothing.
