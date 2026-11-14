@@ -43,8 +43,12 @@ services:
     network_mode: host
     restart: unless-stopped
     environment:
-      DASHBOARD_DOMAIN: ${DASHBOARD_DOMAIN:?Set DASHBOARD_DOMAIN in .env}
+      # Optional here so that "docker compose up db" works without it; Caddy checks it when it starts.
+      DASHBOARD_DOMAIN: ${DASHBOARD_DOMAIN:-}
       DASHBOARD_PORT: ${DASHBOARD_PORT:-4100}
+    command: >-
+      sh -c 'if [ -z "$$DASHBOARD_DOMAIN" ]; then echo "Set DASHBOARD_DOMAIN in .env (see README)" >&2; exit 1; fi;
+      exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile'
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
