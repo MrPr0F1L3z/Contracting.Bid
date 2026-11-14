@@ -26,7 +26,7 @@ The full POC spec lives in the project's Claude Doc, "Contracting.Bid POC: Proce
 | `src/gpu/` | Pauses the owner's listed GPU processes before a run and always resumes them afterwards; checks vLLM lanes and speed and restarts it when needed |
 | `src/dashboard/` | The owner dashboard: a local web page for approvals, the live event log and saved reports |
 | `src/cli/` | `pnpm gpu` (vLLM check, ensure, load test), `pnpm sim` (hiring, bench, bid, job, closeout, dashboard, user) and `pnpm db` (migrate, status, import) |
-| `db/migrations/` | Postgres schema for the data model, applied in order by `pnpm db migrate` |
+| `db/migrations/` | Postgres schema for the data model, applied in order when a run starts (or by `pnpm db migrate`) |
 | `test/` | Unit tests for every function, plus functional tests that apply the schema to an embedded Postgres |
 
 ## Determinism and replay
@@ -92,9 +92,9 @@ Each stage function (`bidStage`, `jobStage`) returns where it stopped, so each s
 
 `src/db/` keeps runs in Postgres when `DATABASE_URL` is set. Everything goes through a small `Db` interface (`query`, `exec`, `transaction`), backed by `pg` in real runs and an embedded Postgres (PGlite) in tests.
 
-- **Migrations:** `db/migrations/NNN_name.sql`, applied in order, each in its own transaction, and recorded in `schema_migrations`. A database the container set up before tracking existed is recorded as already having 001. A run refuses to start while a migration is pending.
+- **Migrations:** `db/migrations/NNN_name.sql`, applied in order and recorded in `schema_migrations`. Every run, `pnpm db` command and the Compose `migrate` service applies the pending ones first, all in one transaction, so a failure rolls them all back and the run does not start. A database the container set up before tracking existed is recorded as already having 001. CI applies them to a fresh Postgres.
 - **Events:** `PersistentEventLog` wraps the run's in-memory log. `append` stays synchronous, so a run plays out the same with or without a database. It queues each insert in order, and `flush()` waits for them and reports the first failure.
-- **Runs:** `RunStore.start` inserts the `runs` row before the first event. `finish` saves the report JSON, its outcome columns, and the run's agents and approvals in one transaction.
+- **Runs:** `RunStore.start` inserts the `runs` row before the first event. `finish` saves the report JSON, its outcome columns, and the run's agents and approvals in one transaction. With a database, no report file is written; `pnpm db export RUN_ID` writes one on demand.
 - **The dashboard** reads Past runs from `RunStore` instead of the reports folder.
 
 ## Next

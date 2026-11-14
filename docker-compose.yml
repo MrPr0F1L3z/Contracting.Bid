@@ -17,6 +17,18 @@ services:
       interval: 5s
       retries: 10
 
+  # Applies new schema migrations whenever the stack comes up, all in one transaction:
+  # if one fails, none are applied and app does not start. Runs started on this machine
+  # (pnpm sim) apply them the same way.
+  migrate:
+    build: .
+    command: ["node", "dist/src/cli/db.js", "migrate"]
+    environment:
+      DATABASE_URL: postgres://contracting:contracting@db:5432/contracting
+    depends_on:
+      db:
+        condition: service_healthy
+
   app:
     build: .
     env_file:
@@ -28,6 +40,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:

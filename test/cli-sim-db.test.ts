@@ -1,3 +1,6 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { databaseHint, main } from "../src/cli/sim.js";
 import { newUser, totpCode } from "../src/dashboard/auth.js";
@@ -32,16 +35,39 @@ describe("pnpm sim with a database (functional, embedded Postgres)", () => {
     expect(lines[1]).toMatch(/^Check DATABASE_URL in \.env/);
   }, 30_000);
 
-  it("refuses to run on a database that needs migrations", async () => {
+  it("applies pending migrations before a run", async () => {
     const fresh = pgliteDb();
-    expect(await main(["closeout", "--stub"], { ...deps(), db: fresh })).toBe(2);
-    expect(lines).toEqual(["Database: The database needs 2 migration(s) (001_init.sql, 002_runs_users.sql). Run: pnpm db migrate"]);
+    expect(await main(["hiring", "--stub", "--seed", "1"], { ...deps(), db: fresh })).toBe(0);
+    expect(lines[0]).toBe("Database: applied 001_init.sql, 002_runs_users.sql.");
+    lines = [];
+    expect(await main(["hiring", "--stub", "--seed", "2"], { ...deps(), db: fresh })).toBe(0);
+    expect(lines.some((l) => l.startsWith("Database:"))).toBe(false);
     await fresh.close();
+  }, 30_000);
+
+  it("does not start a run when a migration fails, and leaves the database as it was", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "badmig-"));
+    await writeFile(join(dir, "001_ok.sql"), "CREATE TABLE a (x INT);");
+    await writeFile(join(dir, "002_bad.sql"), "SELECT nonsense FROM nowhere;");
+    const fresh = pgliteDb();
+    expect(await main(["hiring", "--stub"], { ...deps(), db: fresh, env: { ...env, MIGRATIONS_DIR: dir } })).toBe(2);
+    expect(lines).toEqual([expect.stringMatching(/^Database: Migration 002_bad.sql failed, so none were applied: /)]);
+    expect((await fresh.query("SELECT to_regclass('public.a')::text AS t")).rows[0]).toEqual({ t: null });
+    await fresh.close();
+    await rm(dir, { recursive: true, force: true });
+  }, 30_000);
+
+  it("writes no report file when the run is saved to the database", async () => {
+    const written: string[] = [];
+    expect(await main(["bid", "--stub", "--seed", "2"], { ...deps(), writeReport: async (p) => void written.push(p) })).toBe(0);
+    expect(written).toEqual([]);
+    expect(lines.at(-1)).toBe("Saved to the database. To get it as a file: pnpm db export bid-cloud-2026-11-10T00-00-00-000Z-2");
+    expect(lines.some((l) => l.startsWith("Report:"))).toBe(false);
   }, 30_000);
 
   it("saves a closeout run with every event, agent and approval", async () => {
     expect(await main(["closeout", "--stub", "--seed", "1"], deps())).toBe(0);
-    expect(lines).toContain("Saved to the database.");
+    expect(lines.at(-1)).toMatch(/^Saved to the database\. To get it as a file: pnpm db export closeout-/);
     const runs = new RunStore(db);
     const [summary] = await runs.list();
     expect(summary).toMatchObject({ runId: "closeout-cloud-2026-11-10T00-00-00-000Z-1", seed: 1, outcome: "closed", job: "STUB-E02" });

@@ -42,4 +42,12 @@ describe.skipIf(!url)("PgDb on a real Postgres (functional)", () => {
     expect(await runs.events("r1")).toEqual([{ runId: "r1", seq: 1, type: "run_started", actor: "owner", simTime: 0, payload: { a: [1] } }]);
     expect(await runs.list()).toEqual([expect.objectContaining({ runId: "r1", seed: 2082671124, outcome: "lost", spentUsd: 0.1234 })]);
   });
+
+  it("rolls back every pending migration when one fails", async () => {
+    const all = await loadMigrations(MIGRATIONS);
+    const extra = [...all, { name: "900_ok.sql", sql: "CREATE TABLE later_ok (x INT);" }, { name: "901_bad.sql", sql: "ALTER TABLE no_such_table ADD COLUMN y INT;" }];
+    await expect(migrate(db, extra)).rejects.toThrow(/^Migration 901_bad.sql failed, so none were applied: /);
+    expect((await db.query("SELECT to_regclass('public.later_ok')::text AS t")).rows[0]).toEqual({ t: null });
+    expect((await pendingMigrations(db, extra)).map((m) => m.name)).toEqual(["900_ok.sql", "901_bad.sql"]);
+  });
 });

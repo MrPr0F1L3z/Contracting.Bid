@@ -27,7 +27,6 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the code layout.
 pnpm install
 cp .env.example .env   # then fill in your keys and model name
 docker compose up -d db
-pnpm db migrate        # create or update the database tables
 pnpm check             # typecheck + tests (no keys or GPU needed)
 ```
 
@@ -149,13 +148,14 @@ If you already have a certificate (for example from certbot), the dashboard can 
 
 ## Database
 
-With `DATABASE_URL` set, every `hiring`, `bid`, `job` and `closeout` run is saved in Postgres as well as in `runs/`: the report, every event as it happens, and the run's agents and approvals (including who decided). Dashboard logins live there too, and the dashboard's Past runs tab reads from it. Benchmarks (`bench`) are still files only.
+With `DATABASE_URL` set, every `hiring`, `bid`, `job` and `closeout` run is saved in Postgres instead of `runs/`: the report, every event as it happens, and the run's agents and approvals (including who decided). Dashboard logins live there too, and the dashboard's Past runs tab reads from it. Benchmarks (`bench`) are still files only.
 
-- `pnpm db migrate` creates or updates the tables. Run it after `git pull` when a pull adds a file to `db/migrations/`; a run refuses to start until you do.
-- `pnpm db status` shows which migrations are applied.
+- New migrations in `db/migrations/` are applied automatically when a run starts (and by the `migrate` service on `docker compose up`). They are applied together in one transaction: if any fails, none are, the database is left as it was, and the run does not start. CI applies them to a fresh Postgres on every pull request.
+- `pnpm db migrate` applies them without starting a run. `pnpm db status` shows which are applied.
+- `pnpm db export RUN_ID` writes one run's report to `runs/RUN_ID.json`, to share it. The dashboard's Past runs tab shows the run IDs.
 - `pnpm db import` copies your existing `runs/*.json` reports and `data/dashboard-users.json` logins into the database. It skips anything already there, so it is safe to run twice.
 
-The sim runs on this machine, so `DATABASE_URL` uses `localhost`, not the container name `db`. Postgres only listens on 127.0.0.1. Remove `DATABASE_URL` to run without a database, as before.
+The sim runs on this machine, so `DATABASE_URL` uses `localhost`, not the container name `db`. Postgres only listens on 127.0.0.1. Remove `DATABASE_URL` to run without a database; reports are then written to `runs/` as before.
 
 ## Tests
 

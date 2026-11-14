@@ -21,7 +21,7 @@ import { runCloseoutChain, type CloseoutReport } from "../sim/closeoutChain.js";
 import { DashboardServer } from "../dashboard/server.js";
 import { dashboardOptions, runUserCommand, USER_USAGE, type UserCommandDeps } from "./dashboardCli.js";
 import { openDb, type Db } from "../db/db.js";
-import { loadMigrations, migrationsDir, requireMigrated } from "../db/migrate.js";
+import { loadMigrations, migrate, migrationsDir } from "../db/migrate.js";
 import { PgUserStore, RunStore, type PersistentEventLog, type StoredReport } from "../db/stores.js";
 import { COMPLEXITIES, type Complexity } from "../opportunities/types.js";
 import { newSeed } from "../sim/rng.js";
@@ -277,6 +277,18 @@ export interface SimDeps {
   now?: () => Date;
 }
 
+/** Saves a run's report as a file in the reports folder (runs without a database). */
+export async function saveToFile(path: string, report: object, write: (path: string, json: string) => Promise<void>, out: (line: string) => void): Promise<void> {
+  await write(path, JSON.stringify(report, null, 2));
+  out(`Report: ${path}`);
+}
+
+/** Saves a run's report, agents and approvals in the database; no file is written. */
+export async function saveToDb(store: RunStore, log: PersistentEventLog, report: { runId: string }, out: (line: string) => void): Promise<void> {
+  await store.finish(log, report as unknown as StoredReport);
+  out(`Saved to the database. To get it as a file: pnpm db export ${report.runId}`);
+}
+
 async function defaultWrite(path: string, json: string): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, json);
@@ -310,10 +322,11 @@ export async function main(argv: string[], deps: SimDeps = {}): Promise<number> 
   try {
     if (db) {
       try {
-        await requireMigrated(db, await loadMigrations(migrationsDir(env)));
+        const applied = await migrate(db, await loadMigrations(migrationsDir(env)));
+        if (applied.length) out(`Database: applied ${applied.join(", ")}.`);
       } catch (err) {
         out(`Database: ${err instanceof Error ? err.message : String(err)}`);
-        if (!/pnpm db migrate/.test(String(err))) out(databaseHint(env.DATABASE_URL));
+        if (!/^Migration /.test(err instanceof Error ? err.message : "")) out(databaseHint(env.DATABASE_URL));
         return 2;
       }
     }
@@ -432,14 +445,9 @@ async function runCommand(argv: string[], deps: SimDeps & { db: Db | null }, out
     const store = deps.db ? new RunStore(deps.db) : null;
     const log = await store?.start({ runId: hiringRunId(profile, seed), seed, command: "hiring", profile, modelConfig: { ...roleModelsFor(profile) } });
     const report = await runOnce(profile, seed, approver, log);
-    const path = join(args.out, `${report.runId}.json`);
-    await write(path, JSON.stringify(report, null, 2));
     for (const line of formatReport(report)) out(line);
-    out(`Report: ${path}`);
-    if (store && log) {
-      await store.finish(log, report as unknown as StoredReport);
-      out("Saved to the database.");
-    }
+    if (store && log) await saveToDb(store, log, report, out);
+    else await saveToFile(join(args.out, `${report.runId}.json`), report, write, out);
     return report.outcome === "complete" ? 0 : 1;
   } finally {
     rl?.close();
@@ -515,18 +523,13 @@ async function runBid(
     const forced = { ...options, forceAward: args.forceAward ?? false };
     const report =
       args.command === "closeout" ? await runCloseoutChain(forced) : isJob ? await runJobChain(forced) : await runBidChain(options);
-    const path = join(args.out, `${report.runId}.json`);
-    await write(path, JSON.stringify(report, null, 2));
     const lines =
       args.command === "closeout"
         ? formatCloseoutReport(report as CloseoutReport)
         : isJob ? formatJobReport(report as JobReport) : formatBidReport(report as BidReport);
     for (const line of lines) out(line);
-    out(`Report: ${path}`);
-    if (store && saved) {
-      await store.finish(saved, report as unknown as StoredReport);
-      out("Saved to the database.");
-    }
+    if (store && saved) await saveToDb(store, saved, report, out);
+    else await saveToFile(join(args.out, `${report.runId}.json`), report, write, out);
     return report.outcome === "incomplete" ? 1 : 0;
   } finally {
     rl?.close();
