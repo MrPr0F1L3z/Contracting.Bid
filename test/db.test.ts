@@ -3,9 +3,9 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openDb, PgDb, redactUrl, type Db } from "../src/db/db.js";
-import { appliedMigrations, loadMigrations, migrate, migrationsDir, pendingMigrations, requireMigrated } from "../src/db/migrate.js";
+import { appliedMigrations, loadMigrations, migrate, migrationsDir, pendingMigrations } from "../src/db/migrate.js";
 import { PersistentEventLog, PgUserStore, RunStore, ensureCompany, type StoredReport } from "../src/db/stores.js";
-import { main as dbMain } from "../src/cli/db.js";
+import { main as dbMain, parseDbArgs } from "../src/cli/db.js";
 import { FileUserStore } from "../src/dashboard/auth.js";
 import { MIGRATIONS, migratedDb, pgliteDb } from "./helpers/pgliteDb.js";
 
@@ -48,11 +48,11 @@ describe("migrations (functional, embedded Postgres)", () => {
   it("applies the repo's migrations once, in order", async () => {
     const db = pgliteDb();
     const all = await loadMigrations(MIGRATIONS);
-    await expect(requireMigrated(db, all)).rejects.toThrow(/needs 2 migration\(s\) \(001_init.sql, 002_runs_users.sql\)\. Run: pnpm db migrate/);
+    expect((await pendingMigrations(db, all)).map((m) => m.name)).toEqual(["001_init.sql", "002_runs_users.sql"]);
     expect(await migrate(db, all)).toEqual(["001_init.sql", "002_runs_users.sql"]);
     expect(await migrate(db, all)).toEqual([]);
     expect(await appliedMigrations(db)).toEqual(["001_init.sql", "002_runs_users.sql"]);
-    await requireMigrated(db, all);
+    expect(await pendingMigrations(db, all)).toEqual([]);
     await db.close();
   }, 30_000);
 
@@ -65,14 +65,16 @@ describe("migrations (functional, embedded Postgres)", () => {
     await db.close();
   }, 30_000);
 
-  it("rolls back a migration that fails, leaving it pending", async () => {
+  it("rolls back every pending migration when one fails", async () => {
     await writeFile(join(dir, "001_ok.sql"), "CREATE TABLE a (x INT);");
     await writeFile(join(dir, "002_bad.sql"), "CREATE TABLE b (x INT); SELECT nonsense FROM nowhere;");
     const db = pgliteDb();
     const all = await loadMigrations(dir);
-    await expect(migrate(db, all)).rejects.toThrow();
-    expect(await appliedMigrations(db)).toEqual(["001_ok.sql"]);
-    expect((await db.query("SELECT to_regclass('public.b')::text AS t")).rows[0]).toEqual({ t: null });
+    await expect(migrate(db, all)).rejects.toThrow(/^Migration 002_bad.sql failed, so none were applied: /);
+    expect(await appliedMigrations(db)).toEqual([]);
+    expect((await db.query("SELECT to_regclass('public.a')::text AS a, to_regclass('public.b')::text AS b")).rows[0]).toEqual({ a: null, b: null });
+    await writeFile(join(dir, "002_bad.sql"), "CREATE TABLE b (x INT);");
+    expect(await migrate(db, await loadMigrations(dir))).toEqual(["001_ok.sql", "002_bad.sql"]);
     await db.close();
   }, 30_000);
 });
@@ -196,6 +198,7 @@ describe("pnpm db (functional, embedded Postgres)", () => {
     expect(await dbMain(["help"], { out })).toBe(0);
     expect(await dbMain(["drop"], { out })).toBe(2);
     expect(await dbMain(["import", "--bogus"], { out })).toBe(2);
+    expect(await dbMain(["export"], { out })).toBe(2);
     lines = [];
     expect(await dbMain(["status"], { out, env: {} })).toBe(2);
     expect(lines).toEqual(["Set DATABASE_URL first (see .env.example)."]);
@@ -207,12 +210,11 @@ describe("pnpm db (functional, embedded Postgres)", () => {
     expect(await dbMain(["status"], { out, env, db })).toBe(0);
     expect(lines).toEqual(["pending  001_init.sql", "pending  002_runs_users.sql"]);
     lines = [];
-    expect(await dbMain(["import"], { out, env, db })).toBe(2);
-    expect(lines).toEqual(["Run pnpm db migrate first."]);
+    expect(await dbMain(["import", "--out", join(dir, "none")], { out, env, db })).toBe(0);
+    expect(lines[0]).toBe("Applied 001_init.sql, 002_runs_users.sql.");
     lines = [];
     expect(await dbMain(["migrate"], { out, env, db })).toBe(0);
-    expect(await dbMain(["migrate"], { out, env, db })).toBe(0);
-    expect(lines).toEqual(["Applied 001_init.sql, 002_runs_users.sql.", "The database is up to date."]);
+    expect(lines).toEqual(["The database is up to date."]);
 
     const runsDir = join(dir, "runs");
     await import("node:fs/promises").then((fs) => fs.mkdir(runsDir));
@@ -234,6 +236,32 @@ describe("pnpm db (functional, embedded Postgres)", () => {
     expect(lines.at(-1)).toBe("Imported 0 run(s); skipped 3. Imported 0 dashboard login(s).");
     expect((await db.query("SELECT command FROM runs")).rows).toEqual([{ command: "bid" }]);
     expect(JSON.parse(await readFile(env.DASHBOARD_USERS_FILE, "utf8")).users).toHaveLength(1);
+
+    const shared = join(dir, "shared");
+    lines = [];
+    expect(await dbMain(["export", "bid-cloud-1", "--out", shared], { out, env, db })).toBe(0);
+    expect(lines).toEqual([`Report: ${join(shared, "bid-cloud-1.json")}`]);
+    expect(JSON.parse(await readFile(join(shared, "bid-cloud-1.json"), "utf8"))).toMatchObject({ runId: "bid-cloud-1" });
+    lines = [];
+    expect(await dbMain(["export", "nope"], { out, env, db })).toBe(1);
+    expect(lines).toEqual(["No run nope in the database. pnpm sim dashboard lists the runs."]);
     await db.close();
   }, 30_000);
+});
+
+describe("parseDbArgs", () => {
+  it("reads the folder and run id each command takes", () => {
+    expect(parseDbArgs("migrate", [])).toEqual({ runsDir: "runs" });
+    expect(parseDbArgs("import", ["--out", "x"])).toEqual({ runsDir: "x" });
+    expect(parseDbArgs("export", ["r1"])).toEqual({ runsDir: "runs", runId: "r1" });
+    expect(parseDbArgs("export", ["--out", "x", "r1"])).toEqual({ runsDir: "x", runId: "r1" });
+  });
+  it("refuses wrong arguments", () => {
+    expect(parseDbArgs("status", ["--out", "x"])).toBeNull();
+    expect(parseDbArgs("import", ["--out"])).toBeNull();
+    expect(parseDbArgs("export", [])).toBeNull();
+    expect(parseDbArgs("export", ["../etc"])).toBeNull();
+    expect(parseDbArgs("export", ["a", "b"])).toBeNull();
+    expect(parseDbArgs("drop", [])).toBeNull();
+  });
 });

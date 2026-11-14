@@ -35,3 +35,9 @@ jobs:
       - run: pnpm test
         env:
           TEST_DATABASE_URL: postgres://test:test@localhost:5432/test
+      # Deploy check: apply every migration to a fresh database the way a run does, then
+      # again to show it is a no-op. A failing migration fails CI and is rolled back.
+      - run: psql postgres://test:test@localhost:5432/test -c "CREATE DATABASE deploy"
+      - run: pnpm db migrate && pnpm db migrate && pnpm db status
+        env:
+          DATABASE_URL: postgres://test:test@localhost:5432/deploy

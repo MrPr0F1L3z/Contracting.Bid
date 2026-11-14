@@ -40,25 +40,24 @@ export async function pendingMigrations(db: Db, migrations: Migration[]): Promis
   return migrations.filter((m) => !done.has(m.name));
 }
 
-/** Applies each pending migration in its own transaction. Returns the names applied. */
+/**
+ * Applies every pending migration in one transaction and returns the names applied. If any of
+ * them fails, all of them are rolled back, so the database is left exactly as it was.
+ */
 export async function migrate(db: Db, migrations: Migration[]): Promise<string[]> {
-  const applied: string[] = [];
-  for (const m of await pendingMigrations(db, migrations)) {
-    await db.transaction(async (tx) => {
-      await tx.exec(m.sql);
-      await tx.query("INSERT INTO schema_migrations (name) VALUES ($1)", [m.name]);
-    });
-    applied.push(m.name);
-  }
-  return applied;
-}
-
-/** Throws unless every migration is applied, naming the command that fixes it. */
-export async function requireMigrated(db: Db, migrations: Migration[]): Promise<void> {
   const pending = await pendingMigrations(db, migrations);
-  if (pending.length) {
-    throw new Error(`The database needs ${pending.length} migration(s) (${pending.map((m) => m.name).join(", ")}). Run: pnpm db migrate`);
-  }
+  if (!pending.length) return [];
+  await db.transaction(async (tx) => {
+    for (const m of pending) {
+      try {
+        await tx.exec(m.sql);
+      } catch (err) {
+        throw new Error(`Migration ${m.name} failed, so none were applied: ${err instanceof Error ? err.message : String(err)}`);
+      }
+      await tx.query("INSERT INTO schema_migrations (name) VALUES ($1)", [m.name]);
+    }
+  });
+  return pending.map((m) => m.name);
 }
 
 /** The migrations folder: MIGRATIONS_DIR, or db/migrations under the folder the command runs in. */
