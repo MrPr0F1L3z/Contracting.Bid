@@ -6,6 +6,7 @@ import { openDb, redactUrl, type Db } from "../db/db.js";
 import { appliedMigrations, loadMigrations, migrate, migrationsDir, pendingMigrations } from "../db/migrate.js";
 import { PgUserStore, RunStore, type StoredReport } from "../db/stores.js";
 import { usersFile } from "./dashboardCli.js";
+import { loadDotEnv } from "../config/dotenv.js";
 
 export const DB_USAGE = `Usage:
   pnpm db migrate          apply new schema migrations (db/migrations)
@@ -110,5 +111,6 @@ export async function importFiles(db: Db, runsDir: string, usersPath: string, ou
 
 // Run when invoked directly: node dist/src/cli/db.js migrate
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+  loadDotEnv();
   main(process.argv.slice(2)).then((code) => process.exit(code));
 }

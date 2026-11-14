@@ -27,6 +27,7 @@ import { COMPLEXITIES, type Complexity } from "../opportunities/types.js";
 import { newSeed } from "../sim/rng.js";
 import { STUB_BID_JOB, stubBidProviders } from "../sim/stubBid.js";
 import { stubHiringProviders } from "../sim/stubHiring.js";
+import { loadDotEnv } from "../config/dotenv.js";
 
 export const USAGE = `Usage:
   pnpm sim hiring [--models hybrid|cloud] [--stub] [--seed N] [--out DIR]
@@ -447,6 +448,7 @@ async function runCommand(argv: string[], deps: SimDeps & { db: Db | null }, out
 
 // Run when invoked directly: node dist/src/cli/sim.js hiring
 if (import.meta.url === `file://${process.argv[1]}`) {
+  loadDotEnv();
   main(process.argv.slice(2)).then(
     (code) => process.exit(code),
     (err) => {
