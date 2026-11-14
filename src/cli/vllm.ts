@@ -3,6 +3,7 @@ import { shellRunner, type CommandRunner } from "../gpu/hooks.js";
 import { runLoadTest } from "../gpu/loadTest.js";
 import { decide, ensureVllm, readLaneUsage, timeRequest, type FetchLike } from "../gpu/vllmProbe.js";
 import { SeededRng, newSeed } from "../sim/rng.js";
+import { loadDotEnv } from "../config/dotenv.js";
 
 export const USAGE = `Usage: pnpm gpu <command>
   check                 Report lane usage and probe speed; change nothing
@@ -81,6 +82,7 @@ export async function main(argv: string[], deps: CliDeps = {}): Promise<number> 
 
 // Run when invoked directly: node dist/src/cli/vllm.js <command>
 if (import.meta.url === `file://${process.argv[1]}`) {
+  loadDotEnv();
   main(process.argv.slice(2)).then(
     (code) => process.exit(code),
     (err) => {

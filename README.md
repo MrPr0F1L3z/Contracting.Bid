@@ -31,6 +31,8 @@ pnpm db migrate        # create or update the database tables
 pnpm check             # typecheck + tests (no keys or GPU needed)
 ```
 
+`pnpm sim`, `pnpm gpu` and `pnpm db` read `.env` from the folder you run them in. A variable you `export` in the shell wins over the file.
+
 `VLLM_MODEL` in `.env.example` is a placeholder; set it to the exact model name your vLLM server reports.
 
 ## GPU sharing
