@@ -54,7 +54,12 @@ export interface RunStart {
   profile: string;
   modelConfig: Record<string, unknown>;
   scenarioVersion?: string;
+  /** "dashboard:NAME" for a run started from the always-on dashboard. */
+  startedBy?: string;
 }
+
+/** The outcome given to a run the dashboard service was stopped in the middle of. */
+export const INTERRUPTED = "interrupted";
 
 /** The parts of a run report the database keeps in columns; the whole report is kept as JSON too. */
 export interface StoredReport {
@@ -115,9 +120,9 @@ export class RunStore {
   async start(r: RunStart, inner?: EventLog): Promise<PersistentEventLog> {
     const company = await ensureCompany(this.db);
     await this.db.query(
-      `INSERT INTO runs (id, company_id, seed, scenario_version, model_config, command, profile)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [r.runId, company, r.seed, r.scenarioVersion ?? "poc-1", JSON.stringify(r.modelConfig), r.command, r.profile],
+      `INSERT INTO runs (id, company_id, seed, scenario_version, model_config, command, profile, started_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [r.runId, company, r.seed, r.scenarioVersion ?? "poc-1", JSON.stringify(r.modelConfig), r.command, r.profile, r.startedBy ?? null],
     );
     return new PersistentEventLog(this.db, inner);
   }
@@ -151,12 +156,26 @@ export class RunStore {
     });
   }
 
-  /** Finished runs, newest first, in the dashboard's summary shape. */
+  /**
+   * Marks the dashboard's unfinished runs "interrupted", with the reason, and
+   * returns their ids. Only runs started from the dashboard are touched, so a
+   * run going in a terminal at the same time is left alone.
+   */
+  async interruptDashboardRuns(reason: string): Promise<string[]> {
+    const r = await this.db.query<{ id: string }>(
+      `UPDATE runs SET outcome = $1, reason = $2, finished_at = now()
+       WHERE outcome IS NULL AND report IS NULL AND started_by LIKE 'dashboard:%' RETURNING id`,
+      [INTERRUPTED, reason],
+    );
+    return r.rows.map((x) => x.id).sort();
+  }
+
+  /** Finished and interrupted runs, newest first, in the dashboard's summary shape. */
   async list(limit = 200): Promise<RunSummary[]> {
     const r = await this.db.query<{ id: string; seed: string; outcome: string | null; reason: string | null; spent_usd: string | null; job: string | null }>(
       `SELECT id, seed, outcome, reason, spent_usd, report->'opportunity'->>'noticeId' AS job
-       FROM runs WHERE report IS NOT NULL ORDER BY started_at DESC, id DESC LIMIT $1`,
-      [limit],
+       FROM runs WHERE report IS NOT NULL OR outcome = $2 ORDER BY started_at DESC, id DESC LIMIT $1`,
+      [limit, INTERRUPTED],
     );
     return r.rows.map((x) => ({
       file: `${x.id}.json`,
@@ -169,11 +188,20 @@ export class RunStore {
     }));
   }
 
+  /** A run's saved report. An interrupted run has none, so it gets a short one with the events it logged. */
   async report(runId: string): Promise<Record<string, unknown> | null> {
-    const r = await this.db.query<{ report: Record<string, unknown> | string | null }>("SELECT report FROM runs WHERE id = $1", [runId]);
-    const rep = r.rows[0]?.report;
-    if (!rep) return null;
-    return typeof rep === "string" ? (JSON.parse(rep) as Record<string, unknown>) : rep;
+    const r = await this.db.query<{ report: Record<string, unknown> | string | null; seed: string; command: string | null; profile: string | null; outcome: string | null; reason: string | null; started_by: string | null }>(
+      "SELECT report, seed, command, profile, outcome, reason, started_by FROM runs WHERE id = $1",
+      [runId],
+    );
+    const row = r.rows[0];
+    if (!row) return null;
+    if (row.report) return typeof row.report === "string" ? (JSON.parse(row.report) as Record<string, unknown>) : row.report;
+    if (row.outcome !== INTERRUPTED) return null;
+    return {
+      runId, seed: Number(row.seed), command: row.command, profile: row.profile, outcome: row.outcome, reason: row.reason, startedBy: row.started_by,
+      agents: [], approvals: [], events: await this.events(runId),
+    };
   }
 
   async events(runId: string): Promise<LoggedEvent[]> {

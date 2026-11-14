@@ -41,6 +41,8 @@ describe("dashboardOptions", () => {
       .toMatchObject({ host: "0.0.0.0", tls: { cert: Buffer.from("pem:c.pem"), key: Buffer.from("pem:k.pem") } });
     for (const v of ["1", "true", "YES"]) expect((await dashboardOptions({ DASHBOARD_BEHIND_PROXY: v }, "runs", 0, read)).behindProxy).toBe(true);
     expect((await dashboardOptions({ DASHBOARD_BEHIND_PROXY: "0" }, "runs", 0, read)).behindProxy).toBeUndefined();
+    expect((await dashboardOptions({ DASHBOARD_IN_CONTAINER: "1" }, "runs", 0, read)).inContainer).toBe(true);
+    expect((await dashboardOptions({}, "runs", 0, read)).inContainer).toBeUndefined();
   });
   it("names a bad TLS setting", async () => {
     await expect(dashboardOptions({ DASHBOARD_TLS_CERT: "c.pem" }, "runs", 0, read)).rejects.toThrow("Set both DASHBOARD_TLS_CERT and DASHBOARD_TLS_KEY");

@@ -55,6 +55,7 @@ export async function dashboardOptions(
     ...(env.DASHBOARD_HOST ? { host: env.DASHBOARD_HOST } : {}),
     ...(tls ? { tls } : {}),
     ...(behindProxy ? { behindProxy: true } : {}),
+    ...(truthy(env.DASHBOARD_IN_CONTAINER) ? { inContainer: true } : {}),
   };
 }
 

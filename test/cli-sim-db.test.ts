@@ -40,7 +40,7 @@ describe("pnpm sim with a database (functional, embedded Postgres)", () => {
   it("applies pending migrations before a run", async () => {
     const fresh = pgliteDb();
     expect(await main(["hiring", "--stub", "--seed", "1"], { ...deps(), db: fresh })).toBe(0);
-    expect(lines[0]).toBe("Database: applied 001_init.sql, 002_runs_users.sql.");
+    expect(lines[0]).toBe("Database: applied 001_init.sql, 002_runs_users.sql, 003_run_started_by.sql.");
     lines = [];
     expect(await main(["hiring", "--stub", "--seed", "2"], { ...deps(), db: fresh })).toBe(0);
     expect(lines.some((l) => l.startsWith("Database:"))).toBe(false);
@@ -146,10 +146,11 @@ describe("pnpm sim with a database (functional, embedded Postgres)", () => {
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       })).json() as Promise<Record<string, unknown>>;
   };
-  const waitForLast = async (api: Awaited<ReturnType<typeof signIn>>, answer = false) => {
+  const waitForLast = async (api: Awaited<ReturnType<typeof signIn>>, answer = false, count = 1) => {
     for (;;) {
       const s = await api("/api/launch");
-      if (s.last) return s.last as { exitCode: number; output: string[]; startedBy: string };
+      const finished = s.finished as Array<{ exitCode: number; output: string[]; startedBy: string }>;
+      if (finished.length >= count) return finished[0]!;
       if (answer) {
         for (const p of ((await api("/api/state")).pending as ApprovalRequest[])) await api(`/api/approvals/${p.id}`, { approve: true });
       }
@@ -173,7 +174,7 @@ describe("pnpm sim with a database (functional, embedded Postgres)", () => {
       ...deps(),
       untilStopped: async () => {
         const api = await signIn(u.totpSecret);
-        expect(await api("/api/launch", { command: "closeout", stub: true, seed: 1 })).toMatchObject({ running: { argv: ["closeout", "--seed", "1", "--stub"] } });
+        expect(await api("/api/launch", { command: "closeout", stub: true, seed: 1 })).toMatchObject({ running: [{ argv: ["closeout", "--seed", "1", "--stub"] }] });
         last = await waitForLast(api);
       },
     });
@@ -202,5 +203,60 @@ describe("pnpm sim with a database (functional, embedded Postgres)", () => {
     const [run] = await runs.list();
     const report = (await runs.report(run!.runId)) as { approvals: Array<{ gate: string; decidedBy: string }> };
     expect(report.approvals.find((a) => a.gate === "submit_bid")!.decidedBy).toBe("owner:owner");
+  }, 30_000);
+
+  it("serve runs several runs side by side and saves who started each", async () => {
+    const u = await newUser("owner", PASSWORD);
+    await new PgUserStore(db).put(u);
+    await main(["serve"], {
+      ...deps(),
+      providers: stubBidProviders("cloud"),
+      untilStopped: async () => {
+        const api = await signIn(u.totpSecret);
+        // The bid waits for its approvals, so the hiring run goes alongside it.
+        await api("/api/launch", { command: "bid", job: "STUB-E02", seed: 2 });
+        while (((await api("/api/state")).pending as unknown[]).length === 0) await new Promise((r) => setTimeout(r, 10));
+        const second = await api("/api/launch", { command: "hiring", stub: true, seed: 3 });
+        expect((second.running as unknown[]).length).toBe(2);
+        await waitForLast(api, true, 2);
+      },
+    });
+    expect((await new RunStore(db).list()).map((r) => r.runId).sort()).toEqual(["bid-cloud-2026-11-10T00-00-00-000Z-2", "hiring-cloud-2026-11-10T00-00-00-000Z-3"]);
+    expect((await db.query("SELECT DISTINCT started_by FROM runs")).rows).toEqual([{ started_by: "dashboard:owner" }]);
+  }, 30_000);
+
+  it("serve refuses a bad MAX_PARALLEL_RUNS", async () => {
+    expect(await main(["serve"], { ...deps(), env: { ...env, MAX_PARALLEL_RUNS: "0" } })).toBe(2);
+    expect(lines).toEqual(['MAX_PARALLEL_RUNS must be a whole number from 1 to 20, not "0"']);
+  });
+
+  it("serve marks its runs cut off by a stop as interrupted, and leaves terminal runs alone", async () => {
+    const u = await newUser("owner", PASSWORD);
+    await new PgUserStore(db).put(u);
+    const runs = new RunStore(db);
+    const old = await runs.start({ runId: "old-dash", seed: 5, command: "bid", profile: "cloud", modelConfig: {}, startedBy: "dashboard:owner" });
+    old.append({ runId: "old-dash", simTime: 0, type: "run_started", actor: "owner", payload: {} });
+    await old.flush();
+    await runs.start({ runId: "terminal", seed: 6, command: "bid", profile: "cloud", modelConfig: {} });
+    await main(["serve"], {
+      ...deps(),
+      providers: stubBidProviders("cloud"),
+      untilStopped: async () => {
+        const api = await signIn(u.totpSecret);
+        await api("/api/launch", { command: "bid", job: "STUB-E02", seed: 2 });
+        // Stop while the run waits for its first approval.
+        while (((await api("/api/state")).pending as unknown[]).length === 0) await new Promise((r) => setTimeout(r, 10));
+      },
+    });
+    expect(lines[0]).toBe("Marked 1 run(s) cut off by the last stop as interrupted: old-dash");
+    expect(lines.at(-1)).toBe("Stopping during 1 run(s); marked interrupted: bid-cloud-2026-11-10T00-00-00-000Z-2");
+    const listed = await runs.list();
+    expect(listed.map((r) => [r.runId, r.outcome]).sort()).toEqual([["bid-cloud-2026-11-10T00-00-00-000Z-2", "interrupted"], ["old-dash", "interrupted"]]);
+    expect(await runs.report("old-dash")).toMatchObject({
+      runId: "old-dash", seed: 5, outcome: "interrupted", reason: "The dashboard service stopped during the run.", startedBy: "dashboard:owner",
+      events: [{ type: "run_started" }], approvals: [], agents: [],
+    });
+    expect(await runs.report("terminal")).toBeNull();
+    expect(await runs.interruptDashboardRuns("again")).toEqual([]);
   }, 30_000);
 });

@@ -24,15 +24,44 @@ export interface LaunchJob {
   complexity: string | null;
 }
 
+export interface RunningLaunch {
+  /** Numbers the runs started by this service, from 1. */
+  launchId: number;
+  command: LaunchCommand;
+  argv: string[];
+  startedBy: string;
+  startedAt: string;
+}
+
+export interface FinishedLaunch extends RunningLaunch {
+  exitCode: number;
+  finishedAt: string;
+  output: string[];
+}
+
 export interface LaunchState {
-  running: { command: LaunchCommand; argv: string[]; startedBy: string; startedAt: string } | null;
-  last: { command: LaunchCommand; argv: string[]; startedBy: string; exitCode: number; finishedAt: string; output: string[] } | null;
+  running: RunningLaunch[];
+  /** The latest finished runs, newest first. */
+  finished: FinishedLaunch[];
+  maxParallel: number;
 }
 
 /** The longest seed the sim accepts (the seeds it picks itself are below 2^32). */
 const MAX_SEED = 2 ** 32 - 1;
 /** Lines of a run's output kept for the page. */
 export const OUTPUT_LINES = 60;
+/** Finished runs kept for the page. */
+export const FINISHED_KEPT = 10;
+/** Runs that may go at once unless MAX_PARALLEL_RUNS says otherwise. */
+export const DEFAULT_MAX_PARALLEL = 3;
+
+/** MAX_PARALLEL_RUNS as a number of runs, or the default. Throws on a bad value. */
+export function maxParallelRuns(value: string | undefined): number {
+  if (value === undefined || value.trim() === "") return DEFAULT_MAX_PARALLEL;
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 1 || n > 20) throw new Error(`MAX_PARALLEL_RUNS must be a whole number from 1 to 20, not "${value}"`);
+  return n;
+}
 
 /** Validates a run request posted by the page. Returns an error message or the request. */
 export function parseLaunch(body: unknown, jobs: readonly string[]): LaunchRequest | string {
@@ -73,12 +102,15 @@ export function launchArgv(req: LaunchRequest): string[] {
   return argv;
 }
 
-export type RunFn = (argv: string[], out: (line: string) => void) => Promise<number>;
+/** Runs one `pnpm sim` command line for `by`, writing its output with `out`. Returns the exit code. */
+export type RunFn = (argv: string[], out: (line: string) => void, by: string) => Promise<number>;
 
+/** Runs requests from the page side by side, up to a limit. */
 export class RunLauncher {
-  private current: LaunchState["running"] = null;
-  private previous: LaunchState["last"] = null;
-  private done: Promise<void> = Promise.resolve();
+  private readonly running = new Map<number, RunningLaunch>();
+  private readonly finished: FinishedLaunch[] = [];
+  private readonly inFlight = new Set<Promise<void>>();
+  private nextId = 1;
   /** Called whenever a run starts or ends. */
   onChange: (state: LaunchState) => void = () => undefined;
 
@@ -86,46 +118,56 @@ export class RunLauncher {
     private readonly run: RunFn,
     readonly jobs: readonly LaunchJob[],
     private readonly now: () => Date = () => new Date(),
+    readonly maxParallel = DEFAULT_MAX_PARALLEL,
   ) {}
 
   state(): LaunchState {
     return {
-      running: this.current && { ...this.current, argv: [...this.current.argv] },
-      last: this.previous && { ...this.previous, argv: [...this.previous.argv], output: [...this.previous.output] },
+      running: [...this.running.values()].map((r) => ({ ...r, argv: [...r.argv] })),
+      finished: this.finished.map((f) => ({ ...f, argv: [...f.argv], output: [...f.output] })),
+      maxParallel: this.maxParallel,
     };
+  }
+
+  /** True when no more runs may start until one ends. */
+  full(): boolean {
+    return this.running.size >= this.maxParallel;
   }
 
   /** Starts a run in the background for `by`. Returns an error message, or null when it started. */
   start(body: unknown, by: string): string | null {
-    if (this.current) return `A ${this.current.command} run is already going. Wait for it to finish.`;
+    if (this.full()) return `${this.running.size} run(s) are already going, the most at once (MAX_PARALLEL_RUNS). Wait for one to finish.`;
     const req = parseLaunch(body, this.jobs.map((j) => j.noticeId));
     if (typeof req === "string") return req;
     const argv = launchArgv(req);
-    const running = { command: req.command, argv, startedBy: by, startedAt: this.now().toISOString() };
-    this.current = running;
+    const entry: RunningLaunch = { launchId: this.nextId++, command: req.command, argv, startedBy: by, startedAt: this.now().toISOString() };
+    this.running.set(entry.launchId, entry);
     const output: string[] = [];
     const out = (line: string) => {
       output.push(line);
       if (output.length > OUTPUT_LINES) output.shift();
     };
-    this.done = (async () => {
+    const done = (async () => {
       let exitCode: number;
       try {
-        exitCode = await this.run(argv, out);
+        exitCode = await this.run(argv, out, by);
       } catch (err) {
         out(err instanceof Error ? err.message : String(err));
         exitCode = 1;
       }
-      this.current = null;
-      this.previous = { ...running, exitCode, finishedAt: this.now().toISOString(), output };
+      this.running.delete(entry.launchId);
+      this.finished.unshift({ ...entry, exitCode, finishedAt: this.now().toISOString(), output });
+      if (this.finished.length > FINISHED_KEPT) this.finished.pop();
       this.onChange(this.state());
     })();
+    this.inFlight.add(done);
+    void done.finally(() => this.inFlight.delete(done));
     this.onChange(this.state());
     return null;
   }
 
-  /** Resolves when the current run (if any) has finished. */
-  idle(): Promise<void> {
-    return this.done;
+  /** Resolves when every run going now has finished. */
+  async idle(): Promise<void> {
+    while (this.inFlight.size) await Promise.all([...this.inFlight]);
   }
 }
