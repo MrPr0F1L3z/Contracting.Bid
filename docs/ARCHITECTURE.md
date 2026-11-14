@@ -97,7 +97,11 @@ Each stage function (`bidStage`, `jobStage`) returns where it stopped, so each s
 - **Runs:** `RunStore.start` inserts the `runs` row before the first event. `finish` saves the report JSON, its outcome columns, and the run's agents and approvals in one transaction. With a database, no report file is written; `pnpm db export RUN_ID` writes one on demand.
 - **The dashboard** reads Past runs from `RunStore` instead of the reports folder.
 
+## Always-on dashboard
+
+`pnpm sim serve` (the Compose `dashboard` service) keeps the dashboard up. A `RunLauncher` (`src/dashboard/launcher.ts`) takes a run request from the page (`POST /api/launch`), turns it into `pnpm sim` arguments and runs them in the same process, one at a time. The run gets the service's dashboard, so its approvals and events go there, and it is saved to the database. Run starts and ends are streamed to the page as `launch` events.
+
 ## Next
 
 1. The real SAM.gov source in place of the stub.
-2. An always-on dashboard service that starts runs itself, now that runs live in the database.
+2. Scheduled runs from the service, and marking runs left unfinished by a restart.

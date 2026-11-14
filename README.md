@@ -132,6 +132,18 @@ The run waits for you on the page. It closes when the run ends. To browse saved 
 
 Five wrong sign-ins lock that name and that address out for 15 minutes. A session ends after an hour without use, or 12 hours after sign-in, and restarting the dashboard signs everyone out.
 
+### Keep the dashboard running
+
+`pnpm sim serve` keeps the dashboard up and adds a **Start a run** tab: pick `closeout`, `job`, `bid` or `hiring`, optionally a job, a seed and Force award, and start it. Its approvals show in the Approvals tab and its events in the Live log, and it is saved to the database. One run goes at a time, each capped at `RUN_BUDGET_USD`. Tick "Scripted models" for a free dry run. It needs `DATABASE_URL`.
+
+To have it start with the machine and come back after a crash, run it with Docker Compose instead:
+
+```sh
+docker compose up -d dashboard
+```
+
+It reads `.env` (your API key and dashboard settings), uses the logins in the database, and listens on 127.0.0.1:4100 like `pnpm sim serve`, so Caddy (below) works the same. `docker compose logs -f dashboard` shows its output and `docker compose stop dashboard` stops it. Runs started there use cloud models only, since vLLM is controlled from the host. After a `git pull`, rebuild it with `docker compose up -d --build dashboard`.
+
 ### Reach the dashboard from other devices
 
 The dashboard listens only on this machine until you set up HTTPS. The simplest way is Caddy, which gets and renews a free Let's Encrypt certificate:
@@ -140,7 +152,7 @@ The dashboard listens only on this machine until you set up HTTPS. The simplest 
 2. Open ports 80 and 443 on your router or firewall and forward them to this machine. Do not open 4100 or 5432.
 3. In `.env`, set `DASHBOARD_DOMAIN=dashboard.example.com` and `DASHBOARD_BEHIND_PROXY=1`.
 4. Start Caddy: `docker compose --profile public up -d caddy`.
-5. Run the sim on this machine as usual, with `--dashboard`, and open `https://dashboard.example.com` on your phone.
+5. Start the dashboard service (`docker compose up -d dashboard`, see above), or run the sim with `--dashboard`, and open `https://dashboard.example.com` on your phone.
 
 The dashboard itself stays on 127.0.0.1; only Caddy faces the internet. `DASHBOARD_BEHIND_PROXY=1` marks the session cookie Secure, turns on HSTS, and takes the visitor's address from Caddy for the lockout.
 

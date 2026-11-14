@@ -5,6 +5,7 @@ import { request as httpsRequest } from "node:https";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DashboardServer, parseDecision, summarize } from "../src/dashboard/server.js";
+import { RunLauncher } from "../src/dashboard/launcher.js";
 import { DASHBOARD_HTML } from "../src/dashboard/page.js";
 import { MAX_FAILURES, MemoryUserStore, newUser, totpCode, type DashboardUser } from "../src/dashboard/auth.js";
 import { InMemoryEventLog } from "../src/events/eventLog.js";
@@ -388,3 +389,86 @@ async function waitFor(check: () => boolean, ms = 2_000): Promise<void> {
     await new Promise((r) => setTimeout(r, 10));
   }
 }
+
+describe("DashboardServer starting runs (functional)", () => {
+  let d: DashboardServer;
+  let base: string;
+  let t: number;
+  let finish: (code: number) => void;
+  let launcher: RunLauncher;
+  const signedIn = async () => {
+    const c = client(base);
+    t += 30_000;
+    expect((await c.login("owner", PASSWORD, totpCode(owner.totpSecret, Math.floor(t / 30_000)))).status).toBe(200);
+    return c;
+  };
+  beforeEach(async () => {
+    t = 1_800_000_000_000;
+    launcher = new RunLauncher(() => new Promise((r) => (finish = r)), [{ noticeId: "STUB-E02", title: "Paint", complexity: "easy" }], () => new Date(t));
+    d = new DashboardServer({ runsDir: "nowhere", port: 0, users: await usersWithOwner(), now: () => t, launcher });
+    base = (await d.start()).replace(/\/$/, "");
+  });
+  afterEach(async () => {
+    finish?.(0);
+    await d.stop();
+  });
+
+  it("lists the jobs, starts one run at a time as the signed-in user, and refuses bad requests", async () => {
+    expect(await client(base).call("/api/launch")).toMatchObject({ status: 401 });
+    const c = await signedIn();
+    expect(await c.call("/api/launch")).toMatchObject({ status: 200, body: { jobs: [{ noticeId: "STUB-E02" }], running: null, last: null } });
+    expect(await c.call("/api/launch", { method: "POST", body: { command: "bid" }, headers: { "x-csrf-token": "wrong" } })).toMatchObject({ status: 403 });
+    expect(await c.call("/api/launch", { method: "POST", body: { command: "bench" } })).toMatchObject({ status: 400 });
+    expect(await c.call("/api/launch", { method: "POST", raw: "{" })).toMatchObject({ status: 400, body: { error: "Body must be JSON" } });
+    const started = await c.call("/api/launch", { method: "POST", body: { command: "closeout", job: "STUB-E02", forceAward: true } });
+    expect(started).toMatchObject({ status: 202, body: { running: { argv: ["closeout", "--job", "STUB-E02", "--force-award"], startedBy: "owner" } } });
+    expect(await c.call("/api/launch", { method: "POST", body: { command: "hiring" } })).toMatchObject({ status: 409, body: { error: "A closeout run is already going. Wait for it to finish." } });
+    finish(0);
+    await launcher.idle();
+    expect(await c.call("/api/launch")).toMatchObject({ body: { running: null, last: { exitCode: 0 } } });
+  });
+
+  it("streams run starts and ends, and clears the live log for a new run", async () => {
+    const c = await signedIn();
+    d.tee().append({ runId: "old", simTime: 0, type: "e", actor: "a", payload: {} });
+    const frames: string[] = [];
+    const req = httpRequest({ host: "127.0.0.1", port: Number(new URL(base).port), path: "/api/stream", headers: { cookie: c.cookie } });
+    await new Promise<void>((resolve) => {
+      req.on("response", (res) => {
+        res.on("data", (b: Buffer) => frames.push(b.toString()));
+        resolve();
+      });
+      req.end();
+    });
+    await c.call("/api/launch", { method: "POST", body: { command: "hiring" } });
+    d.clearLive();
+    finish(0);
+    await launcher.idle();
+    await new Promise((r) => setTimeout(r, 50));
+    const all = frames.join("");
+    expect(all).toMatch(/event: launch\ndata: \{"running":\{"command":"hiring"/);
+    expect(all).toContain("event: cleared");
+    expect(all).toMatch(/event: launch\ndata: \{"running":null,"last":\{"command":"hiring"/);
+    expect(((await c.call("/api/state")).body as { events: unknown[] }).events).toEqual([]);
+    req.destroy();
+  });
+});
+
+describe("DashboardServer without a launcher", () => {
+  it("says how to get one that starts runs", async () => {
+    const d = new DashboardServer({ runsDir: "nowhere", port: 0, users: await usersWithOwner() });
+    const base = (await d.start()).replace(/\/$/, "");
+    const c = client(base);
+    expect((await c.login("owner", PASSWORD, totpCode(owner.totpSecret, Math.floor(Date.now() / 30_000)))).status).toBe(200);
+    expect(await c.call("/api/launch")).toMatchObject({ status: 404, body: { error: "This dashboard cannot start runs. Start it with: pnpm sim serve" } });
+    await d.stop();
+  });
+});
+
+describe("DASHBOARD_HTML", () => {
+  it("has a script that parses", async () => {
+    const { Script } = await import("node:vm");
+    const script = /<script>([\s\S]*)<\/script>/.exec(DASHBOARD_HTML)![1]!;
+    expect(() => new Script(script)).not.toThrow();
+  });
+});

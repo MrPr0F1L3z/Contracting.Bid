@@ -47,6 +47,26 @@ services:
     volumes:
       - ./runs:/app/runs
 
+  # The owner dashboard as an always-on service (pnpm sim serve): start runs and
+  # answer approvals from the page. Start it with: docker compose up -d dashboard
+  # It uses the host network so it listens on 127.0.0.1 (where Caddy expects it)
+  # and reaches Postgres on localhost.
+  dashboard:
+    build: .
+    command: ["node", "dist/src/cli/sim.js", "serve"]
+    network_mode: host
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgres://contracting:contracting@localhost:5432/contracting
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
   # HTTPS in front of the owner dashboard, with a Let's Encrypt certificate for
   # DASHBOARD_DOMAIN. Start it with: docker compose --profile public up -d caddy
   # It uses the host network so it can reach the dashboard on 127.0.0.1, and

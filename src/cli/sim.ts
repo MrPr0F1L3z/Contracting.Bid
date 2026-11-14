@@ -28,6 +28,10 @@ import { newSeed } from "../sim/rng.js";
 import { STUB_BID_JOB, stubBidProviders } from "../sim/stubBid.js";
 import { stubHiringProviders } from "../sim/stubHiring.js";
 import { loadDotEnv } from "../config/dotenv.js";
+import { RunLauncher, type LaunchJob } from "../dashboard/launcher.js";
+import type { EventLog } from "../events/eventLog.js";
+import { isBiddableConstruction } from "../opportunities/pick.js";
+import { STUB_OPPORTUNITIES } from "../opportunities/stub.js";
 
 export const USAGE = `Usage:
   pnpm sim hiring [--models hybrid|cloud] [--stub] [--seed N] [--out DIR]
@@ -37,6 +41,7 @@ export const USAGE = `Usage:
   pnpm sim job    the same flags as bid, plus [--force-award]
   pnpm sim closeout  the same flags as job
   pnpm sim dashboard [--out DIR]   open the owner dashboard on saved reports
+  pnpm sim serve     keep the owner dashboard up, and start runs from it (needs DATABASE_URL)
   pnpm sim user add|passwd|reset-code|remove NAME, or pnpm sim user list   manage dashboard logins
 
   --models   hybrid: President and PM on Claude, other roles on your local vLLM model
@@ -62,7 +67,7 @@ Bookkeeper invoices, pays every bill and collects, and the PM closes the project
 bid, job or closeout run always bids ${STUB_BID_JOB} and approves every gate.`;
 
 export interface SimArgs {
-  command: "hiring" | "bench" | "bid" | "job" | "closeout" | "dashboard";
+  command: "hiring" | "bench" | "bid" | "job" | "closeout" | "dashboard" | "serve";
   dashboard?: boolean;
   forceAward?: boolean;
   profiles: Profile[];
@@ -84,7 +89,11 @@ function parseCount(flag: string, value: string, min: number): number {
 /** Parses a sim command line. Throws on anything unknown. */
 export function parseSimArgs(argv: string[]): SimArgs {
   const [command, ...args] = argv;
-  if (command !== "hiring" && command !== "bench" && command !== "bid" && command !== "job" && command !== "closeout" && command !== "dashboard") throw new Error(`Unknown command "${command ?? ""}"`);
+  if (command !== "hiring" && command !== "bench" && command !== "bid" && command !== "job" && command !== "closeout" && command !== "dashboard" && command !== "serve") throw new Error(`Unknown command "${command ?? ""}"`);
+  if (command === "serve") {
+    if (args.length) throw new Error("serve takes no options");
+    return { command, profiles: ["cloud"], runs: 3, stub: false, out: "runs" };
+  }
   const bidLike = command === "bid" || command === "job" || command === "closeout";
   const parsed: SimArgs = {
     command,
@@ -268,8 +277,10 @@ export interface SimDeps {
   fetchImpl?: FetchLike;
   run?: CommandRunner;
   writeReport?: (path: string, json: string) => Promise<void>;
-  /** Resolves when a standalone dashboard should stop; defaults to Ctrl+C. */
+  /** Resolves when a standalone dashboard should stop; defaults to Ctrl+C or a stop signal. */
   untilStopped?: () => Promise<void>;
+  /** The always-on dashboard a run started from `serve` reports to. */
+  dashboard?: DashboardServer;
   /** For `pnpm sim user`: prompts and the login store. */
   user?: Omit<UserCommandDeps, "env" | "out">;
   /** The database; left out, DATABASE_URL picks it, and null means none. */
@@ -336,6 +347,54 @@ export async function main(argv: string[], deps: SimDeps = {}): Promise<number> 
   }
 }
 
+/** Resolves on Ctrl+C, or when Docker or systemd asks the process to stop. */
+export function untilSignal(): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const done = () => {
+      process.off("SIGINT", done);
+      process.off("SIGTERM", done);
+      resolve();
+    };
+    process.once("SIGINT", done);
+    process.once("SIGTERM", done);
+  });
+}
+
+/** The jobs the dashboard offers when starting a run. */
+export function launchJobs(): LaunchJob[] {
+  return STUB_OPPORTUNITIES.filter(isBiddableConstruction).map((o) => ({ noticeId: o.noticeId, title: o.title, complexity: o.complexity }));
+}
+
+/**
+ * `pnpm sim serve`: the owner dashboard as a service that stays up. Signed-in
+ * users start runs from the page, one at a time; each run's approvals and
+ * events show there, and it is saved to the database.
+ */
+async function serve(args: SimArgs, env: Record<string, string | undefined>, port: number, deps: SimDeps & { db: Db | null }, out: (line: string) => void): Promise<number> {
+  if (!deps.db) {
+    out("serve needs DATABASE_URL: runs started from the dashboard are saved in the database.");
+    return 2;
+  }
+  let server: DashboardServer;
+  const launcher = new RunLauncher(async (argv, runOut) => {
+    server.clearLive();
+    return runCommand(argv, { ...deps, dashboard: server }, runOut);
+  }, launchJobs(), deps.now);
+  try {
+    server = new DashboardServer({ ...(await dashboardOptions(env, args.out, port, undefined, deps.db)), launcher });
+    out(`Owner dashboard: ${await server.start()}`);
+  } catch (err) {
+    out(err instanceof Error ? err.message : String(err));
+    return 2;
+  }
+  out("Start runs and answer approvals there. Press Ctrl+C to stop.");
+  await (deps.untilStopped ?? untilSignal)();
+  const running = launcher.state().running;
+  if (running) out(`Stopping during a ${running.command} run; it stays unfinished in the database.`);
+  await server.stop();
+  return 0;
+}
+
 /** What to check when the database cannot be reached. */
 export function databaseHint(url: string | undefined): string {
   const host = /@([^:/]+)/.exec(url ?? "")?.[1];
@@ -377,10 +436,11 @@ async function runCommand(argv: string[], deps: SimDeps & { db: Db | null }, out
       return 2;
     }
     out("Press Ctrl+C to stop.");
-    await (deps.untilStopped ?? (() => new Promise<void>((resolve) => process.once("SIGINT", () => resolve()))))();
+    await (deps.untilStopped ?? untilSignal)();
     await server.stop();
     return 0;
   }
+  if (args.command === "serve") return serve(args, env, port, deps, out);
   const config = loadConfig(env);
   const write = deps.writeReport ?? defaultWrite;
   const stamp = (deps.now ?? (() => new Date()))().toISOString().replace(/[:.]/g, "-");
@@ -398,7 +458,7 @@ async function runCommand(argv: string[], deps: SimDeps & { db: Db | null }, out
     });
   }
 
-  const runOnce = (profile: Profile, seed: number, approver: Approver, log?: PersistentEventLog) => {
+  const runOnce = (profile: Profile, seed: number, approver: Approver, log?: EventLog) => {
     const providers = args.stub ? stubHiringProviders(profile) : (deps.providers ?? realProviders(config, profile));
     return runHiringChain({
       runId: hiringRunId(profile, seed),
@@ -436,6 +496,7 @@ async function runCommand(argv: string[], deps: SimDeps & { db: Db | null }, out
   let rl: ReturnType<typeof createInterface> | undefined;
   const approver =
     deps.approver ??
+    deps.dashboard?.approver() ??
     terminalApprover((q) => {
       rl ??= createInterface({ input: process.stdin, output: process.stdout });
       return rl.question(q);
@@ -444,7 +505,7 @@ async function runCommand(argv: string[], deps: SimDeps & { db: Db | null }, out
   try {
     const store = deps.db ? new RunStore(deps.db) : null;
     const log = await store?.start({ runId: hiringRunId(profile, seed), seed, command: "hiring", profile, modelConfig: { ...roleModelsFor(profile) } });
-    const report = await runOnce(profile, seed, approver, log);
+    const report = await runOnce(profile, seed, approver, deps.dashboard ? deps.dashboard.tee(log) : log);
     for (const line of formatReport(report)) out(line);
     if (store && log) await saveToDb(store, log, report, out);
     else await saveToFile(join(args.out, `${report.runId}.json`), report, write, out);
@@ -477,8 +538,9 @@ async function runBid(
   deps: SimDeps,
   port = 4100,
 ): Promise<number> {
-  let dashboard: DashboardServer | null = null;
-  if (args.dashboard && !args.stub && !args.autoApprove) {
+  let dashboard: DashboardServer | null = deps.dashboard ?? null;
+  const ownDashboard = !deps.dashboard;
+  if (ownDashboard && args.dashboard && !args.stub && !args.autoApprove) {
     try {
       dashboard = new DashboardServer(await dashboardOptions(deps.env ?? process.env, args.out, port, undefined, deps.db));
       out(`Owner dashboard: ${await dashboard.start()}`);
@@ -533,6 +595,6 @@ async function runBid(
     return report.outcome === "incomplete" ? 1 : 0;
   } finally {
     rl?.close();
-    await dashboard?.stop();
+    if (ownDashboard) await dashboard?.stop();
   }
 }

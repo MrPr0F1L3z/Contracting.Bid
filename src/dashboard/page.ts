@@ -27,6 +27,7 @@ export const DASHBOARD_HTML = `<!doctype html>
   button.act { font:inherit; padding:6px 12px; border-radius:6px; border:1px solid var(--line); background:var(--card); color:var(--ink); cursor:pointer; }
   button.ok { background:var(--ok); border-color:var(--ok); color:#fff; }
   button.bad { color:var(--bad); }
+  select { font:inherit; padding:6px 8px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--ink); max-width:100%; }
   input[type=text], input[type=password] { font:inherit; padding:6px 8px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--ink); flex:1; min-width:160px; }
   table { width:100%; border-collapse:collapse; font-size:14px; }
   th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
@@ -53,6 +54,7 @@ export const DASHBOARD_HTML = `<!doctype html>
     <button data-tab="approvals" class="on">Approvals <span id="count" class="badge" hidden>0</span></button>
     <button data-tab="live">Live log</button>
     <button data-tab="runs">Past runs</button>
+    <button data-tab="start" id="startTab" hidden>Start a run</button>
   </nav>
   <span id="conn" class="muted" style="margin-left:auto"></span>
   <span id="who" class="muted"></span>
@@ -63,6 +65,7 @@ export const DASHBOARD_HTML = `<!doctype html>
   <section id="approvals" hidden></section>
   <section id="live" hidden><div class="card log" id="log"></div></section>
   <section id="runs" hidden></section>
+  <section id="start" hidden></section>
 </main>
 <script>
 (() => {
@@ -87,11 +90,15 @@ export const DASHBOARD_HTML = `<!doctype html>
   };
   let pending = [];
   const events = [];
+  const TABS = ["approvals", "live", "runs", "start"];
+  let launch = null;
+  let launchNote = "";
 
   document.querySelectorAll("nav button").forEach((b) => b.addEventListener("click", () => {
     document.querySelectorAll("nav button").forEach((x) => x.classList.toggle("on", x === b));
-    for (const id of ["approvals", "live", "runs"]) $(id).hidden = id !== b.dataset.tab;
+    for (const id of TABS) $(id).hidden = id !== b.dataset.tab;
     if (b.dataset.tab === "runs") showRuns();
+    if (b.dataset.tab === "start") renderStart();
   }));
 
   function renderApprovals() {
@@ -213,12 +220,72 @@ export const DASHBOARD_HTML = `<!doctype html>
       el("div", { class: "card" }, el("h3", { text: "Events" }), el("div", { class: "row" }, filter), log));
   }
 
+  async function loadLaunch() {
+    try {
+      launch = await api("/api/launch");
+      $("startTab").hidden = false;
+      renderStart();
+    } catch { $("startTab").hidden = true; launch = null; }
+  }
+
+  function renderStart() {
+    const box = $("start");
+    if (!launch) { box.replaceChildren(); return; }
+    const status = el("div", { class: "card" });
+    if (launch.running) {
+      const r = launch.running;
+      status.append(el("h3", { text: "Running: " + r.argv.join(" ") }),
+        el("div", { class: "muted", text: "Started by " + r.startedBy + " at " + new Date(r.startedAt).toLocaleString() + ". Approvals appear in the Approvals tab; events in the Live log." }));
+    } else if (launch.last) {
+      const l = launch.last;
+      status.append(el("h3", { text: "Last run: " + l.argv.join(" ") }),
+        el("div", { class: "muted", text: (l.exitCode === 0 ? "Finished" : "Ended with exit code " + l.exitCode) + " at " + new Date(l.finishedAt).toLocaleString() + ", started by " + l.startedBy + "." }),
+        el("div", { class: "log", text: l.output.join("\\n") }));
+    } else status.append(el("div", { class: "muted", text: "No run started here yet. Runs are saved in the database and listed under Past runs." }));
+
+    const command = el("select", {}, ...["closeout", "job", "bid", "hiring"].map((c) => el("option", { value: c, text: c })));
+    const job = el("select", {}, el("option", { value: "", text: "Job: picked by seed" }),
+      ...launch.jobs.map((j) => el("option", { value: j.noticeId, text: j.noticeId + " · " + j.title + (j.complexity ? " (" + j.complexity + ")" : "") })));
+    const seed = el("input", { type: "text", inputmode: "numeric", placeholder: "Seed (random if empty)" });
+    const force = el("input", { type: "checkbox" });
+    const stub = el("input", { type: "checkbox" });
+    const forceLabel = el("label", {}, force, el("span", { text: " Force award if the bid loses on price (simulation only)" }));
+    const sync = () => { job.disabled = command.value === "hiring"; forceLabel.hidden = !["job", "closeout"].includes(command.value); };
+    command.addEventListener("change", sync);
+    sync();
+    const err = el("div", { class: "error" });
+    const go = el("button", { class: "act ok", type: "submit", text: "Start run" });
+    go.disabled = Boolean(launch.running);
+    const form = el("form", { class: "card" },
+      el("h3", { text: "Start a run" }),
+      el("div", { class: "muted", text: "Uses cloud models and the run budget (RUN_BUDGET_USD). One run at a time." }),
+      el("div", { class: "row" }, command, job, seed),
+      el("div", { class: "row" }, forceLabel),
+      el("div", { class: "row" }, el("label", {}, stub, el("span", { text: " Scripted models: no Claude cost, always bids STUB-E02, approves every gate" }))),
+      el("div", { class: "row" }, go, el("span", { class: "muted", text: launchNote })), err);
+    form.addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      go.disabled = true; err.textContent = "";
+      const body = { command: command.value, stub: stub.checked };
+      if (!job.disabled && job.value) body.job = job.value;
+      if (seed.value.trim()) body.seed = seed.value.trim();
+      if (!forceLabel.hidden && force.checked) body.forceAward = true;
+      try {
+        launch = { ...launch, ...(await api("/api/launch", { method: "POST", body: JSON.stringify(body) })) };
+        launchNote = "Started.";
+        renderStart();
+      } catch (e) { err.textContent = e.message; go.disabled = Boolean(launch.running); }
+    });
+    box.replaceChildren(status, form);
+  }
+
   let es = null;
   function showLogin(message) {
     if (es) { es.close(); es = null; }
     csrf = "";
     $("nav").hidden = true; $("logout").hidden = true; $("who").textContent = ""; $("conn").textContent = "";
-    for (const id of ["approvals", "live", "runs"]) $(id).hidden = true;
+    for (const id of TABS) $(id).hidden = true;
+    $("startTab").hidden = true; launch = null;
     const err = el("div", { class: "error", text: message || "" });
     const user = el("input", { type: "text", name: "username", autocomplete: "username", placeholder: "Login name", required: "" });
     const pass = el("input", { type: "password", name: "password", autocomplete: "current-password", placeholder: "Password", required: "" });
@@ -268,6 +335,14 @@ export const DASHBOARD_HTML = `<!doctype html>
     es.addEventListener("approval", (m) => { const r = JSON.parse(m.data); pending = pending.filter((p) => p.id !== r.id).concat(r); renderApprovals(); });
     es.addEventListener("decided", (m) => { const d = JSON.parse(m.data); pending = pending.filter((p) => p.id !== d.id); renderApprovals(); });
     es.addEventListener("event", (m) => addEvent(JSON.parse(m.data)));
+    es.addEventListener("cleared", () => { $("log").replaceChildren(); events.length = 0; });
+    es.addEventListener("launch", (m) => {
+      if (!launch) return;
+      launch = { ...launch, ...JSON.parse(m.data) };
+      if (!launch.running) launchNote = "";
+      if (!$("start").hidden) renderStart();
+    });
+    loadLaunch();
   }
   fetch("/api/me", { credentials: "same-origin" })
     .then(async (res) => (res.ok ? signedIn(await res.json()) : showLogin()))
