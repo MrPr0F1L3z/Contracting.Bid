@@ -125,7 +125,7 @@ export const DASHBOARD_HTML = `<!doctype html>
     };
     const head = el("div", {},
       el("h3", { text: r.gate.replace(/_/g, " ") + (r.amountUsd !== undefined ? " · " + money(r.amountUsd) : "") }),
-      el("div", { class: "muted", text: "#" + r.id + " from " + r.requestedBy }),
+      el("div", { class: "muted", text: "#" + r.id + (r.number !== undefined ? " (approval " + r.number + " of its run)" : "") + " from " + r.requestedBy + (r.runId ? " · " + r.runId : "") }),
       el("p", { text: r.summary }));
     const card = el("div", { class: "card" }, head);
     if (r.items && r.items.length) {
@@ -155,16 +155,18 @@ export const DASHBOARD_HTML = `<!doctype html>
     return card;
   }
 
-  function eventLine(e) {
+  function eventLine(e, withRun) {
     const p = e.payload || {};
     const short = Object.entries(p).filter(([, v]) => typeof v !== "object" || v === null).slice(0, 6)
       .map(([k, v]) => k + "=" + (typeof v === "string" && v.length > 80 ? v.slice(0, 80) + "…" : v)).join(" ");
-    return "#" + e.seq + " " + e.type + " · " + e.actor + (short ? " · " + short : "");
+    const parts = String(e.runId || "").split("-");
+    const run = withRun && parts.length > 1 ? "[" + parts[0] + " " + parts[parts.length - 1] + "] " : "";
+    return run + "#" + e.seq + " " + e.type + " · " + e.actor + (short ? " · " + short : "");
   }
   function addEvent(e) {
     events.push(e);
     const log = $("log");
-    log.append(el("div", { text: eventLine(e) }));
+    log.append(el("div", { text: eventLine(e, true) }));
     if (log.childNodes.length > 500) log.firstChild.remove();
   }
 
@@ -232,16 +234,22 @@ export const DASHBOARD_HTML = `<!doctype html>
     const box = $("start");
     if (!launch) { box.replaceChildren(); return; }
     const status = el("div", { class: "card" });
-    if (launch.running) {
-      const r = launch.running;
-      status.append(el("h3", { text: "Running: " + r.argv.join(" ") }),
-        el("div", { class: "muted", text: "Started by " + r.startedBy + " at " + new Date(r.startedAt).toLocaleString() + ". Approvals appear in the Approvals tab; events in the Live log." }));
-    } else if (launch.last) {
-      const l = launch.last;
-      status.append(el("h3", { text: "Last run: " + l.argv.join(" ") }),
-        el("div", { class: "muted", text: (l.exitCode === 0 ? "Finished" : "Ended with exit code " + l.exitCode) + " at " + new Date(l.finishedAt).toLocaleString() + ", started by " + l.startedBy + "." }),
+    const full = launch.running.length >= launch.maxParallel;
+    if (launch.running.length) {
+      status.append(el("h3", { text: "Running (" + launch.running.length + " of at most " + launch.maxParallel + ")" }));
+      for (const r of launch.running) {
+        status.append(el("div", { text: "#" + r.launchId + " " + r.argv.join(" ") }),
+          el("div", { class: "muted", text: "Started by " + r.startedBy + " at " + new Date(r.startedAt).toLocaleString() }));
+      }
+      status.append(el("p", { class: "muted", text: "Approvals appear in the Approvals tab, marked with their run; events in the Live log." }));
+    } else if (!launch.finished.length) status.append(el("div", { class: "muted", text: "No run started here yet. Runs are saved in the database and listed under Past runs." }));
+    const finished = launch.finished.map((l, i) => {
+      const d = el("details", {}, el("summary", { text: "#" + l.launchId + " " + l.argv.join(" ") + ": " + (l.exitCode === 0 ? "finished" : "ended with exit code " + l.exitCode) + " at " + new Date(l.finishedAt).toLocaleString() + ", started by " + l.startedBy }),
         el("div", { class: "log", text: l.output.join("\\n") }));
-    } else status.append(el("div", { class: "muted", text: "No run started here yet. Runs are saved in the database and listed under Past runs." }));
+      if (i === 0) d.open = true;
+      return d;
+    });
+    if (finished.length) status.append(el("h3", { text: "Finished here" }), ...finished);
 
     const command = el("select", {}, ...["closeout", "job", "bid", "hiring"].map((c) => el("option", { value: c, text: c })));
     const job = el("select", {}, el("option", { value: "", text: "Job: picked by seed" }),
@@ -255,10 +263,10 @@ export const DASHBOARD_HTML = `<!doctype html>
     sync();
     const err = el("div", { class: "error" });
     const go = el("button", { class: "act ok", type: "submit", text: "Start run" });
-    go.disabled = Boolean(launch.running);
+    go.disabled = full;
     const form = el("form", { class: "card" },
       el("h3", { text: "Start a run" }),
-      el("div", { class: "muted", text: "Uses cloud models and the run budget (RUN_BUDGET_USD). One run at a time." }),
+      el("div", { class: "muted", text: "Uses cloud models; each run has its own budget (RUN_BUDGET_USD). Up to " + launch.maxParallel + " runs at once (MAX_PARALLEL_RUNS)." }),
       el("div", { class: "row" }, command, job, seed),
       el("div", { class: "row" }, forceLabel),
       el("div", { class: "row" }, el("label", {}, stub, el("span", { text: " Scripted models: no Claude cost, always bids STUB-E02, approves every gate" }))),
@@ -274,7 +282,7 @@ export const DASHBOARD_HTML = `<!doctype html>
         launch = { ...launch, ...(await api("/api/launch", { method: "POST", body: JSON.stringify(body) })) };
         launchNote = "Started.";
         renderStart();
-      } catch (e) { err.textContent = e.message; go.disabled = Boolean(launch.running); }
+      } catch (e) { err.textContent = e.message; go.disabled = launch.running.length >= launch.maxParallel; }
     });
     box.replaceChildren(status, form);
   }
@@ -339,7 +347,7 @@ export const DASHBOARD_HTML = `<!doctype html>
     es.addEventListener("launch", (m) => {
       if (!launch) return;
       launch = { ...launch, ...JSON.parse(m.data) };
-      if (!launch.running) launchNote = "";
+      launchNote = "";
       if (!$("start").hidden) renderStart();
     });
     loadLaunch();

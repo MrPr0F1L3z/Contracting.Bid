@@ -28,7 +28,7 @@ import { newSeed } from "../sim/rng.js";
 import { STUB_BID_JOB, stubBidProviders } from "../sim/stubBid.js";
 import { stubHiringProviders } from "../sim/stubHiring.js";
 import { loadDotEnv } from "../config/dotenv.js";
-import { RunLauncher, type LaunchJob } from "../dashboard/launcher.js";
+import { RunLauncher, maxParallelRuns, type LaunchJob } from "../dashboard/launcher.js";
 import type { EventLog } from "../events/eventLog.js";
 import { isBiddableConstruction } from "../opportunities/pick.js";
 import { STUB_OPPORTUNITIES } from "../opportunities/stub.js";
@@ -281,6 +281,8 @@ export interface SimDeps {
   untilStopped?: () => Promise<void>;
   /** The always-on dashboard a run started from `serve` reports to. */
   dashboard?: DashboardServer;
+  /** Who started the run from the dashboard, saved with it ("dashboard:NAME"). */
+  startedBy?: string;
   /** For `pnpm sim user`: prompts and the login store. */
   user?: Omit<UserCommandDeps, "env" | "out">;
   /** The database; left out, DATABASE_URL picks it, and null means none. */
@@ -375,11 +377,22 @@ async function serve(args: SimArgs, env: Record<string, string | undefined>, por
     out("serve needs DATABASE_URL: runs started from the dashboard are saved in the database.");
     return 2;
   }
+  let maxParallel: number;
+  try {
+    maxParallel = maxParallelRuns(env.MAX_PARALLEL_RUNS);
+  } catch (err) {
+    out(err instanceof Error ? err.message : String(err));
+    return 2;
+  }
+  const runs = new RunStore(deps.db);
+  const before = await runs.interruptDashboardRuns("The dashboard service stopped during the run.");
+  if (before.length) out(`Marked ${before.length} run(s) cut off by the last stop as interrupted: ${before.join(", ")}`);
   let server: DashboardServer;
-  const launcher = new RunLauncher(async (argv, runOut) => {
-    server.clearLive();
-    return runCommand(argv, { ...deps, dashboard: server }, runOut);
-  }, launchJobs(), deps.now);
+  const launcher = new RunLauncher(async (argv, runOut, by) => {
+    // Start a fresh live log only when no other run is writing to it.
+    if (launcher.state().running.length === 1) server.clearLive();
+    return runCommand(argv, { ...deps, dashboard: server, startedBy: `dashboard:${by}` }, runOut);
+  }, launchJobs(), deps.now, maxParallel);
   try {
     server = new DashboardServer({ ...(await dashboardOptions(env, args.out, port, undefined, deps.db)), launcher });
     out(`Owner dashboard: ${await server.start()}`);
@@ -390,7 +403,10 @@ async function serve(args: SimArgs, env: Record<string, string | undefined>, por
   out("Start runs and answer approvals there. Press Ctrl+C to stop.");
   await (deps.untilStopped ?? untilSignal)();
   const running = launcher.state().running;
-  if (running) out(`Stopping during a ${running.command} run; it stays unfinished in the database.`);
+  if (running.length) {
+    const cut = await runs.interruptDashboardRuns("The dashboard service stopped during the run.");
+    out(`Stopping during ${running.length} run(s); marked interrupted: ${cut.join(", ")}`);
+  }
   await server.stop();
   return 0;
 }
@@ -496,7 +512,7 @@ async function runCommand(argv: string[], deps: SimDeps & { db: Db | null }, out
   let rl: ReturnType<typeof createInterface> | undefined;
   const approver =
     deps.approver ??
-    deps.dashboard?.approver() ??
+    deps.dashboard?.approver(hiringRunId(profile, seed)) ??
     terminalApprover((q) => {
       rl ??= createInterface({ input: process.stdin, output: process.stdout });
       return rl.question(q);
@@ -504,7 +520,7 @@ async function runCommand(argv: string[], deps: SimDeps & { db: Db | null }, out
   out(`Starting a ${profile} hiring run${args.stub ? " with scripted models" : ""}. Claude budget: $${config.runBudgetUsd}.`);
   try {
     const store = deps.db ? new RunStore(deps.db) : null;
-    const log = await store?.start({ runId: hiringRunId(profile, seed), seed, command: "hiring", profile, modelConfig: { ...roleModelsFor(profile) } });
+    const log = await store?.start({ runId: hiringRunId(profile, seed), seed, command: "hiring", profile, modelConfig: { ...roleModelsFor(profile) }, ...(deps.startedBy ? { startedBy: deps.startedBy } : {}) });
     const report = await runOnce(profile, seed, approver, deps.dashboard ? deps.dashboard.tee(log) : log);
     for (const line of formatReport(report)) out(line);
     if (store && log) await saveToDb(store, log, report, out);
@@ -558,7 +574,7 @@ async function runBid(
     args.stub || args.autoApprove
       ? autoApprover
       : dashboard
-        ? dashboard.approver()
+        ? dashboard.approver(`${args.command}-${profile}-${stamp}-${seed}`)
         : (deps.approver ??
         terminalApprover((q) => {
           rl ??= createInterface({ input: process.stdin, output: process.stdout });
@@ -569,7 +585,7 @@ async function runBid(
   try {
     const runId = `${args.command}-${profile}-${stamp}-${seed}`;
     const store = deps.db ? new RunStore(deps.db) : null;
-    const saved = await store?.start({ runId, seed, command: args.command, profile, modelConfig: { ...roleModelsFor(profile) } });
+    const saved = await store?.start({ runId, seed, command: args.command, profile, modelConfig: { ...roleModelsFor(profile) }, ...(deps.startedBy ? { startedBy: deps.startedBy } : {}) });
     const log = dashboard ? dashboard.tee(saved) : saved;
     const options = {
       runId,

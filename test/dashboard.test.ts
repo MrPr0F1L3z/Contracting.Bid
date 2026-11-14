@@ -74,6 +74,17 @@ describe("DashboardServer without HTTP", () => {
     expect(d.pendingRequests()).toEqual([]);
   });
 
+  it("keeps approvals from runs going side by side apart", async () => {
+    const d = new DashboardServer({ runsDir: "nowhere", users: new MemoryUserStore() });
+    const a = d.approver("bid-1")({ ...plain });
+    const b = d.approver("hiring-2")({ ...plain });
+    expect(d.pendingRequests()).toEqual([{ ...plain, runId: "bid-1" }, { ...plain, id: 2, number: 1, runId: "hiring-2" }]);
+    expect(d.decide(2, { approve: false, reason: "not this one" }, "owner")).toBeNull();
+    expect(await b).toEqual({ approve: false, reason: "not this one", by: "owner" });
+    expect(d.decide(1, { approve: true }, "owner")).toBeNull();
+    expect(await a).toEqual({ approve: true, by: "owner" });
+  });
+
   it("tees events into the wrapped log and keeps the last 500", () => {
     const d = new DashboardServer({ runsDir: "nowhere", users: new MemoryUserStore() });
     const inner = new InMemoryEventLog();
@@ -404,7 +415,7 @@ describe("DashboardServer starting runs (functional)", () => {
   };
   beforeEach(async () => {
     t = 1_800_000_000_000;
-    launcher = new RunLauncher(() => new Promise((r) => (finish = r)), [{ noticeId: "STUB-E02", title: "Paint", complexity: "easy" }], () => new Date(t));
+    launcher = new RunLauncher(() => new Promise((r) => (finish = r)), [{ noticeId: "STUB-E02", title: "Paint", complexity: "easy" }], () => new Date(t), 1);
     d = new DashboardServer({ runsDir: "nowhere", port: 0, users: await usersWithOwner(), now: () => t, launcher });
     base = (await d.start()).replace(/\/$/, "");
   });
@@ -413,19 +424,19 @@ describe("DashboardServer starting runs (functional)", () => {
     await d.stop();
   });
 
-  it("lists the jobs, starts one run at a time as the signed-in user, and refuses bad requests", async () => {
+  it("lists the jobs, starts runs up to the limit as the signed-in user, and refuses bad requests", async () => {
     expect(await client(base).call("/api/launch")).toMatchObject({ status: 401 });
     const c = await signedIn();
-    expect(await c.call("/api/launch")).toMatchObject({ status: 200, body: { jobs: [{ noticeId: "STUB-E02" }], running: null, last: null } });
+    expect(await c.call("/api/launch")).toMatchObject({ status: 200, body: { jobs: [{ noticeId: "STUB-E02" }], running: [], finished: [], maxParallel: 1 } });
     expect(await c.call("/api/launch", { method: "POST", body: { command: "bid" }, headers: { "x-csrf-token": "wrong" } })).toMatchObject({ status: 403 });
     expect(await c.call("/api/launch", { method: "POST", body: { command: "bench" } })).toMatchObject({ status: 400 });
     expect(await c.call("/api/launch", { method: "POST", raw: "{" })).toMatchObject({ status: 400, body: { error: "Body must be JSON" } });
     const started = await c.call("/api/launch", { method: "POST", body: { command: "closeout", job: "STUB-E02", forceAward: true } });
-    expect(started).toMatchObject({ status: 202, body: { running: { argv: ["closeout", "--job", "STUB-E02", "--force-award"], startedBy: "owner" } } });
-    expect(await c.call("/api/launch", { method: "POST", body: { command: "hiring" } })).toMatchObject({ status: 409, body: { error: "A closeout run is already going. Wait for it to finish." } });
+    expect(started).toMatchObject({ status: 202, body: { running: [{ launchId: 1, argv: ["closeout", "--job", "STUB-E02", "--force-award"], startedBy: "owner" }] } });
+    expect(await c.call("/api/launch", { method: "POST", body: { command: "hiring" } })).toMatchObject({ status: 409, body: { error: "1 run(s) are already going, the most at once (MAX_PARALLEL_RUNS). Wait for one to finish." } });
     finish(0);
     await launcher.idle();
-    expect(await c.call("/api/launch")).toMatchObject({ body: { running: null, last: { exitCode: 0 } } });
+    expect(await c.call("/api/launch")).toMatchObject({ body: { running: [], finished: [{ launchId: 1, exitCode: 0 }] } });
   });
 
   it("streams run starts and ends, and clears the live log for a new run", async () => {
@@ -446,11 +457,22 @@ describe("DashboardServer starting runs (functional)", () => {
     await launcher.idle();
     await new Promise((r) => setTimeout(r, 50));
     const all = frames.join("");
-    expect(all).toMatch(/event: launch\ndata: \{"running":\{"command":"hiring"/);
+    expect(all).toMatch(/event: launch\ndata: \{"running":\[\{"launchId":1,"command":"hiring"/);
     expect(all).toContain("event: cleared");
-    expect(all).toMatch(/event: launch\ndata: \{"running":null,"last":\{"command":"hiring"/);
+    expect(all).toMatch(/event: launch\ndata: \{"running":\[\],"finished":\[\{"launchId":1,"command":"hiring"/);
     expect(((await c.call("/api/state")).body as { events: unknown[] }).events).toEqual([]);
     req.destroy();
+  });
+});
+
+describe("DashboardServer in a container", () => {
+  it("listens on every address over plain HTTP only when told it is in a container", async () => {
+    await expect(new DashboardServer({ runsDir: "nowhere", port: 0, host: "0.0.0.0", users: await usersWithOwner() }).start()).rejects.toThrow(/will not serve plain HTTP on 0\.0\.0\.0/);
+    const d = new DashboardServer({ runsDir: "nowhere", port: 0, host: "0.0.0.0", inContainer: true, users: await usersWithOwner() });
+    const url = await d.start();
+    expect(url).toMatch(/^http:\/\/0\.0\.0\.0:\d+\/$/);
+    expect((await fetch(url.replace("0.0.0.0", "127.0.0.1"))).status).toBe(200);
+    await d.stop();
   });
 });
 

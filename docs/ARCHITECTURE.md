@@ -99,7 +99,11 @@ Each stage function (`bidStage`, `jobStage`) returns where it stopped, so each s
 
 ## Always-on dashboard
 
-`pnpm sim serve` (the Compose `dashboard` service) keeps the dashboard up. A `RunLauncher` (`src/dashboard/launcher.ts`) takes a run request from the page (`POST /api/launch`), turns it into `pnpm sim` arguments and runs them in the same process, one at a time. The run gets the service's dashboard, so its approvals and events go there, and it is saved to the database. Run starts and ends are streamed to the page as `launch` events.
+`pnpm sim serve` (the Compose `dashboard` service) keeps the dashboard up. A `RunLauncher` (`src/dashboard/launcher.ts`) takes a run request from the page (`POST /api/launch`), turns it into `pnpm sim` arguments and runs them in the same process, side by side up to `MAX_PARALLEL_RUNS`. The run gets the service's dashboard, so its approvals and events go there (each tagged with its run id), and it is saved to the database with `started_by = dashboard:NAME`. Run starts and ends are streamed to the page as `launch` events.
+
+When the service starts, and when it stops with runs still going, `RunStore.interruptDashboardRuns` marks every unfinished `dashboard:` run `interrupted`. Past runs lists them, with the events they logged.
+
+In Compose the dashboard listens on 0.0.0.0 inside its container (`DASHBOARD_IN_CONTAINER=1`) and is published only on the host's 127.0.0.1; Caddy reaches it as `dashboard:4100` on the Compose network. Nothing uses host networking, which Docker Desktop confines to its VM.
 
 ## Next
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { OUTPUT_LINES, RunLauncher, launchArgv, parseLaunch, type LaunchState } from "../src/dashboard/launcher.js";
+import { DEFAULT_MAX_PARALLEL, FINISHED_KEPT, OUTPUT_LINES, RunLauncher, launchArgv, maxParallelRuns, parseLaunch, type LaunchState } from "../src/dashboard/launcher.js";
 
 const JOBS = ["STUB-E01", "STUB-E02"];
 const jobs = JOBS.map((noticeId) => ({ noticeId, title: noticeId, complexity: "easy" }));
@@ -34,56 +34,80 @@ describe("launchArgv", () => {
   });
 });
 
+describe("maxParallelRuns", () => {
+  it("reads MAX_PARALLEL_RUNS, with a default", () => {
+    expect(maxParallelRuns(undefined)).toBe(DEFAULT_MAX_PARALLEL);
+    expect(maxParallelRuns(" ")).toBe(DEFAULT_MAX_PARALLEL);
+    expect(maxParallelRuns("5")).toBe(5);
+    for (const v of ["0", "21", "two", "1.5"]) expect(() => maxParallelRuns(v)).toThrow(/^MAX_PARALLEL_RUNS must be a whole number from 1 to 20/);
+  });
+});
+
 describe("RunLauncher", () => {
-  it("runs one request at a time and keeps the last result", async () => {
-    let finish!: (code: number) => void;
-    const seen: string[][] = [];
+  it("runs requests side by side up to the limit, and lists finished runs newest first", async () => {
+    const finish: Array<(code: number) => void> = [];
+    const seen: Array<[string[], string]> = [];
     const changes: LaunchState[] = [];
-    const l = new RunLauncher((argv, out) => {
-      seen.push(argv);
-      out("Starting");
-      return new Promise((r) => (finish = r));
-    }, jobs, clock);
+    const l = new RunLauncher((argv, out, by) => {
+      seen.push([argv, by]);
+      out(`Starting ${argv[0]}`);
+      return new Promise((r) => finish.push(r));
+    }, jobs, clock, 2);
     l.onChange = (s) => void changes.push(s);
-    expect(l.state()).toEqual({ running: null, last: null });
+    expect(l.state()).toEqual({ running: [], finished: [], maxParallel: 2 });
     expect(l.start({ command: "bid", job: "STUB-E01" }, "owner")).toBeNull();
-    expect(l.state().running).toEqual({ command: "bid", argv: ["bid", "--job", "STUB-E01"], startedBy: "owner", startedAt: "2026-11-14T12:00:00.000Z" });
-    expect(l.start({ command: "hiring" }, "owner")).toBe("A bid run is already going. Wait for it to finish.");
-    expect(seen).toHaveLength(1);
-    finish(0);
+    expect(l.start({ command: "hiring" }, "pat")).toBeNull();
+    expect(l.full()).toBe(true);
+    expect(l.state().running).toEqual([
+      { launchId: 1, command: "bid", argv: ["bid", "--job", "STUB-E01"], startedBy: "owner", startedAt: "2026-11-14T12:00:00.000Z" },
+      { launchId: 2, command: "hiring", argv: ["hiring"], startedBy: "pat", startedAt: "2026-11-14T12:00:00.000Z" },
+    ]);
+    expect(l.start({ command: "job" }, "owner")).toBe("2 run(s) are already going, the most at once (MAX_PARALLEL_RUNS). Wait for one to finish.");
+    expect(seen).toEqual([[["bid", "--job", "STUB-E01"], "owner"], [["hiring"], "pat"]]);
+    finish[1]!(0);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(l.state().running.map((r) => r.launchId)).toEqual([1]);
+    expect(l.start({ command: "job" }, "owner")).toBeNull();
+    finish[0]!(1);
+    finish[2]!(0);
     await l.idle();
-    expect(l.state()).toEqual({
-      running: null,
-      last: { command: "bid", argv: ["bid", "--job", "STUB-E01"], startedBy: "owner", startedAt: "2026-11-14T12:00:00.000Z", exitCode: 0, finishedAt: "2026-11-14T12:00:00.000Z", output: ["Starting"] },
-    });
-    expect(changes.map((s) => [s.running?.command ?? null, s.last?.exitCode ?? null])).toEqual([["bid", null], [null, 0]]);
+    const s = l.state();
+    expect(s.running).toEqual([]);
+    expect(s.finished.map((f) => [f.launchId, f.exitCode])).toEqual([[3, 0], [1, 1], [2, 0]]);
+    expect(s.finished[2]).toMatchObject({ command: "hiring", startedBy: "pat", output: ["Starting hiring"], finishedAt: "2026-11-14T12:00:00.000Z" });
+    expect(changes.map((c) => c.running.length)).toEqual([1, 2, 1, 2, 1, 0]);
   });
 
   it("refuses a bad request without starting anything", () => {
     const l = new RunLauncher(async () => 0, jobs, clock);
     expect(l.start({ command: "bid", job: "nope" }, "owner")).toBe("Unknown job");
-    expect(l.state().running).toBeNull();
+    expect(l.state().running).toEqual([]);
   });
 
-  it("records a run that throws, and keeps only the last lines of output", async () => {
+  it("records a run that throws, keeps only the last lines of output and the last finished runs", async () => {
     const l = new RunLauncher(async (_argv, out) => {
       for (let i = 0; i < OUTPUT_LINES + 5; i++) out(`line ${i}`);
       throw new Error("ANTHROPIC_API_KEY is not set");
     }, jobs, clock);
     l.start({ command: "hiring" }, "owner");
     await l.idle();
-    const last = l.state().last!;
+    const last = l.state().finished[0]!;
     expect(last.exitCode).toBe(1);
     expect(last.output).toHaveLength(OUTPUT_LINES);
     expect(last.output.at(-1)).toBe("ANTHROPIC_API_KEY is not set");
-    expect(l.start({ command: "hiring" }, "owner")).toBeNull();
+    for (let i = 0; i < FINISHED_KEPT + 2; i++) {
+      l.start({ command: "hiring" }, "owner");
+      await l.idle();
+    }
+    expect(l.state().finished).toHaveLength(FINISHED_KEPT);
+    expect(l.state().finished[0]!.launchId).toBe(FINISHED_KEPT + 3);
   });
 
   it("hands out copies of its state", async () => {
     const l = new RunLauncher(async (_a, out) => (out("x"), 0), jobs, clock);
     l.start({ command: "hiring" }, "owner");
     await l.idle();
-    l.state().last!.output.push("changed");
-    expect(l.state().last!.output).toEqual(["x"]);
+    l.state().finished[0]!.output.push("changed");
+    expect(l.state().finished[0]!.output).toEqual(["x"]);
   });
 });

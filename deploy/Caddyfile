@@ -2,7 +2,8 @@
 # certificate for DASHBOARD_DOMAIN from Let's Encrypt on its own.
 {$DASHBOARD_DOMAIN} {
 	encode gzip
-	reverse_proxy 127.0.0.1:{$DASHBOARD_PORT} {
+	# The dashboard service on the Compose network (DASHBOARD_UPSTREAM overrides it).
+	reverse_proxy {$DASHBOARD_UPSTREAM:dashboard:4100} {
 		# Send live events (server-sent events) straight through.
 		flush_interval -1
 	}

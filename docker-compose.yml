@@ -1,5 +1,7 @@
 # Runs on the owner's machine. vLLM is NOT in this file: it already runs on
 # the host GPU on port 8001. Note: vllm_service binds 127.0.0.1, which a container cannot reach via host.docker.internal.
+# Nothing here uses network_mode: host, because Docker Desktop runs containers in a VM
+# where "host" means the VM, not this machine.
 services:
   db:
     image: postgres:17
@@ -29,8 +31,11 @@ services:
       db:
         condition: service_healthy
 
+  # Runs the test suite in a container. Not started by "docker compose up";
+  # run it with: docker compose --profile tools run --rm app
   app:
     build: .
+    profiles: ["tools"]
     env_file:
       - path: .env
         required: false
@@ -44,23 +49,25 @@ services:
         condition: service_completed_successfully
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    volumes:
-      - ./runs:/app/runs
 
   # The owner dashboard as an always-on service (pnpm sim serve): start runs and
   # answer approvals from the page. Start it with: docker compose up -d dashboard
-  # It uses the host network so it listens on 127.0.0.1 (where Caddy expects it)
-  # and reaches Postgres on localhost.
+  # It is published only on this machine's 127.0.0.1 (DASHBOARD_PORT, default 4100);
+  # Caddy reaches it over the Compose network.
   dashboard:
     build: .
     command: ["node", "dist/src/cli/sim.js", "serve"]
-    network_mode: host
     restart: unless-stopped
     env_file:
       - path: .env
         required: false
     environment:
-      DATABASE_URL: postgres://contracting:contracting@localhost:5432/contracting
+      DATABASE_URL: postgres://contracting:contracting@db:5432/contracting
+      DASHBOARD_HOST: 0.0.0.0
+      DASHBOARD_PORT: "4100"
+      DASHBOARD_IN_CONTAINER: "1"
+    ports:
+      - "127.0.0.1:${DASHBOARD_PORT:-4100}:4100"
     depends_on:
       db:
         condition: service_healthy
@@ -69,20 +76,23 @@ services:
 
   # HTTPS in front of the owner dashboard, with a Let's Encrypt certificate for
   # DASHBOARD_DOMAIN. Start it with: docker compose --profile public up -d caddy
-  # It uses the host network so it can reach the dashboard on 127.0.0.1, and
-  # needs ports 80 and 443 open to the internet for the certificate.
+  # It needs ports 80 and 443 open to the internet for the certificate.
   caddy:
     image: caddy:2.10
     profiles: ["public"]
-    network_mode: host
     restart: unless-stopped
     environment:
       # Optional here so that "docker compose up db" works without it; Caddy checks it when it starts.
       DASHBOARD_DOMAIN: ${DASHBOARD_DOMAIN:-}
-      DASHBOARD_PORT: ${DASHBOARD_PORT:-4100}
     command: >-
       sh -c 'if [ -z "$$DASHBOARD_DOMAIN" ]; then echo "Set DASHBOARD_DOMAIN in .env (see README)" >&2; exit 1; fi;
       exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile'
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    depends_on:
+      - dashboard
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data

@@ -27,6 +27,12 @@ export interface DashboardOptions {
    * address is read from the last X-Forwarded-For entry.
    */
   behindProxy?: boolean;
+  /**
+   * Set inside a container whose port is published only on the host's
+   * 127.0.0.1 (see docker-compose.yml). The dashboard may then listen on
+   * 0.0.0.0 over plain HTTP, since only this machine and Caddy can reach it.
+   */
+  inContainer?: boolean;
   /** Clock, for tests. */
   now?: () => number;
   /** Where saved runs come from instead of the reports folder, such as the database. */
@@ -51,8 +57,11 @@ export interface RunSummary {
   spentUsd: number | null;
 }
 
+/** A request as the page sees it: which run asked, and its own number if the page shows another. */
+export type DashboardRequest = ApprovalRequest & { number?: number; runId?: string };
+
 interface Pending {
-  request: ApprovalRequest;
+  request: DashboardRequest;
   resolve: (d: ApprovalDecision) => void;
 }
 
@@ -105,7 +114,7 @@ export function summarize(file: string, report: Record<string, unknown>): RunSum
 export class DashboardServer {
   private server: Server | null = null;
   private readonly pending = new Map<number, Pending>();
-  private readonly decided: Array<{ request: ApprovalRequest; decision: ApprovalDecision }> = [];
+  private readonly decided: Array<{ request: DashboardRequest; decision: ApprovalDecision }> = [];
   private readonly streams = new Map<ServerResponse, string>();
   private readonly recent: LoggedEvent[] = [];
   private readonly now: () => number;
@@ -136,12 +145,20 @@ export class DashboardServer {
     return this.secure ? "__Host-cb_session" : "cb_session";
   }
 
-  /** An approver that waits for the owner to decide on the page. */
-  approver(): Approver {
+  /**
+   * An approver that waits for the owner to decide on the page. Pass the run's
+   * id when several runs share the dashboard: each request then carries it, and
+   * a request whose number another run's pending request already uses gets a
+   * free number on the page (its own number stays in `number`).
+   */
+  approver(runId?: string): Approver {
     return (request) =>
       new Promise<ApprovalDecision>((resolve) => {
-        this.pending.set(request.id, { request: { ...request }, resolve });
-        this.broadcast("approval", { ...request });
+        let id = request.id;
+        if (this.pending.has(id)) id = Math.max(id, ...this.pending.keys()) + 1;
+        const shown: DashboardRequest = { ...request, id, ...(id !== request.id ? { number: request.id } : {}), ...(runId ? { runId } : {}) };
+        this.pending.set(id, { request: shown, resolve });
+        this.broadcast("approval", { ...shown });
       });
   }
 
@@ -159,7 +176,7 @@ export class DashboardServer {
     };
   }
 
-  pendingRequests(): ApprovalRequest[] {
+  pendingRequests(): DashboardRequest[] {
     return [...this.pending.values()].map((p) => ({ ...p.request }));
   }
 
@@ -217,7 +234,7 @@ export class DashboardServer {
    */
   async start(): Promise<string> {
     const host = this.o.host ?? "127.0.0.1";
-    if (!LOOPBACK.has(host) && !this.o.tls) {
+    if (!LOOPBACK.has(host) && !this.o.tls && !this.o.inContainer) {
       throw new Error(
         `The dashboard will not serve plain HTTP on ${host}. Set DASHBOARD_TLS_CERT and DASHBOARD_TLS_KEY, or keep it on 127.0.0.1 behind Caddy (see README).`,
       );
@@ -378,7 +395,7 @@ export class DashboardServer {
         } catch {
           return this.send(res, 400, { error: "Body must be JSON" });
         }
-        const busy = launcher.state().running !== null;
+        const busy = launcher.full();
         const problem = launcher.start(body, session.username);
         return problem ? this.send(res, busy ? 409 : 400, { error: problem }) : this.send(res, 202, launcher.state());
       }

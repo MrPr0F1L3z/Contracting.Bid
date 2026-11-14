@@ -134,7 +134,9 @@ Five wrong sign-ins lock that name and that address out for 15 minutes. A sessio
 
 ### Keep the dashboard running
 
-`pnpm sim serve` keeps the dashboard up and adds a **Start a run** tab: pick `closeout`, `job`, `bid` or `hiring`, optionally a job, a seed and Force award, and start it. Its approvals show in the Approvals tab and its events in the Live log, and it is saved to the database. One run goes at a time, each capped at `RUN_BUDGET_USD`. Tick "Scripted models" for a free dry run. It needs `DATABASE_URL`.
+`pnpm sim serve` keeps the dashboard up and adds a **Start a run** tab: pick `closeout`, `job`, `bid` or `hiring`, optionally a job, a seed and Force award, and start it. Its approvals show in the Approvals tab and its events in the Live log, and it is saved to the database. Runs go side by side, up to `MAX_PARALLEL_RUNS` at once (default 3), each with its own `RUN_BUDGET_USD` cap, so three runs can spend up to three times that. Each approval card and live log line names its run. Tick "Scripted models" for a free dry run. It needs `DATABASE_URL`.
+
+If the service stops in the middle of a run (a restart, a crash, `docker compose stop`), the run is marked **interrupted** in the database and shows that way under Past runs, with the events it logged. It is not resumed. Runs started in a terminal are never marked.
 
 To have it start with the machine and come back after a crash, run it with Docker Compose instead:
 
@@ -142,7 +144,7 @@ To have it start with the machine and come back after a crash, run it with Docke
 docker compose up -d dashboard
 ```
 
-It reads `.env` (your API key and dashboard settings), uses the logins in the database, and listens on 127.0.0.1:4100 like `pnpm sim serve`, so Caddy (below) works the same. `docker compose logs -f dashboard` shows its output and `docker compose stop dashboard` stops it. Runs started there use cloud models only, since vLLM is controlled from the host. After a `git pull`, rebuild it with `docker compose up -d --build dashboard`.
+It reads `.env` (your API key and dashboard settings) and uses the logins in the database. Open `http://127.0.0.1:4100/` (or your `DASHBOARD_PORT`) on this machine: the port is published only on 127.0.0.1, so other devices go through Caddy (below). Its log prints `http://0.0.0.0:4100/`, the address inside the container. Plain `docker compose up -d` starts the same three services (`db`, `migrate`, `dashboard`). `docker compose logs -f dashboard` shows its output and `docker compose stop dashboard` stops it. Runs started there use cloud models only, since vLLM is controlled from the host. After a `git pull`, rebuild it with `docker compose up -d --build dashboard`.
 
 ### Reach the dashboard from other devices
 
@@ -151,12 +153,12 @@ The dashboard listens only on this machine until you set up HTTPS. The simplest 
 1. Point a domain name (for example `dashboard.example.com`) at your machine's public IP address, with a DNS A record.
 2. Open ports 80 and 443 on your router or firewall and forward them to this machine. Do not open 4100 or 5432.
 3. In `.env`, set `DASHBOARD_DOMAIN=dashboard.example.com` and `DASHBOARD_BEHIND_PROXY=1`.
-4. Start Caddy: `docker compose --profile public up -d caddy`.
-5. Start the dashboard service (`docker compose up -d dashboard`, see above), or run the sim with `--dashboard`, and open `https://dashboard.example.com` on your phone.
+4. Start Caddy and the dashboard service: `docker compose --profile public up -d caddy` (it starts `dashboard` too).
+5. Open `https://dashboard.example.com` on your phone.
 
-The dashboard itself stays on 127.0.0.1; only Caddy faces the internet. `DASHBOARD_BEHIND_PROXY=1` marks the session cookie Secure, turns on HSTS, and takes the visitor's address from Caddy for the lockout.
+Caddy forwards to the dashboard service over the Compose network; the dashboard is never published beyond 127.0.0.1, so only Caddy faces the internet. Caddy fronts the service, not a terminal `--dashboard` run. `DASHBOARD_BEHIND_PROXY=1` marks the session cookie Secure, turns on HSTS, and takes the visitor's address from Caddy for the lockout.
 
-If you already have a certificate (for example from certbot), the dashboard can serve HTTPS itself instead: set `DASHBOARD_HOST=0.0.0.0`, `DASHBOARD_TLS_CERT` and `DASHBOARD_TLS_KEY`. It refuses to serve plain HTTP on anything but 127.0.0.1.
+If you already have a certificate (for example from certbot), the dashboard can serve HTTPS itself instead: set `DASHBOARD_HOST=0.0.0.0`, `DASHBOARD_TLS_CERT` and `DASHBOARD_TLS_KEY`. It refuses to serve plain HTTP on anything but 127.0.0.1, except inside the Compose service, where `DASHBOARD_IN_CONTAINER=1` allows it because the port is published only on this machine's 127.0.0.1.
 
 ## Database
 
