@@ -7,6 +7,7 @@ import type { ApprovalRequest } from "../approvals/approvals.js";
 import type { ApprovalDecision, Approver } from "../agents/hiringTools.js";
 import { InMemoryEventLog, type EventInput, type EventLog, type LoggedEvent } from "../events/eventLog.js";
 import { DASHBOARD_HTML } from "./page.js";
+import type { RunLauncher } from "./launcher.js";
 import { LoginLimiter, SessionStore, hashPassword, readCookie, verifyPassword, verifyTotp, type Session, type UserStore } from "./auth.js";
 
 export interface DashboardOptions {
@@ -33,6 +34,8 @@ export interface DashboardOptions {
     list(): Promise<RunSummary[]>;
     read(runId: string): Promise<Record<string, unknown> | null>;
   };
+  /** Lets signed-in users start runs from the page (the always-on service). */
+  launcher?: RunLauncher;
 }
 
 const LOOPBACK = new Set(["127.0.0.1", "::1", "localhost"]);
@@ -114,6 +117,14 @@ export class DashboardServer {
     this.now = o.now ?? Date.now;
     this.sessions = new SessionStore(this.now);
     this.limiter = new LoginLimiter(this.now);
+    if (o.launcher) o.launcher.onChange = (state) => this.broadcast("launch", state);
+  }
+
+  /** Clears the live log and past decisions, before a new run starts. */
+  clearLive(): void {
+    this.recent.length = 0;
+    this.decided.length = 0;
+    this.broadcast("cleared", {});
   }
 
   private get secure(): boolean {
@@ -356,6 +367,22 @@ export class DashboardServer {
       return this.send(res, 200, { pending: this.pendingRequests(), decided: this.decided, events: this.recent });
     }
     if (req.method === "GET" && url.pathname === "/api/runs") return this.send(res, 200, await this.listRuns());
+    if (url.pathname === "/api/launch") {
+      const launcher = this.o.launcher;
+      if (!launcher) return this.send(res, 404, { error: "This dashboard cannot start runs. Start it with: pnpm sim serve" });
+      if (req.method === "GET") return this.send(res, 200, { jobs: launcher.jobs, ...launcher.state() });
+      if (req.method === "POST") {
+        let body: unknown;
+        try {
+          body = JSON.parse(await readBody(req, 4 * 1024));
+        } catch {
+          return this.send(res, 400, { error: "Body must be JSON" });
+        }
+        const busy = launcher.state().running !== null;
+        const problem = launcher.start(body, session.username);
+        return problem ? this.send(res, busy ? 409 : 400, { error: problem }) : this.send(res, 202, launcher.state());
+      }
+    }
     const run = /^\/api\/runs\/([^/]+)$/.exec(url.pathname);
     if (req.method === "GET" && run) {
       let file: string;

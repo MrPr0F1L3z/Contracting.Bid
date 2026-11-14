@@ -2,7 +2,9 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { databaseHint, main } from "../src/cli/sim.js";
+import { databaseHint, launchJobs, main, parseSimArgs } from "../src/cli/sim.js";
+import { stubBidProviders } from "../src/sim/stubBid.js";
+import type { ApprovalRequest } from "../src/approvals/approvals.js";
 import { newUser, totpCode } from "../src/dashboard/auth.js";
 import { PgUserStore, RunStore } from "../src/db/stores.js";
 import type { Db } from "../src/db/db.js";
@@ -125,5 +127,80 @@ describe("pnpm sim with a database (functional, embedded Postgres)", () => {
     });
     expect(code).toBe(0);
     expect(runs).toEqual([expect.objectContaining({ runId: "bid-cloud-2026-11-10T00-00-00-000Z-2", seed: 2 })]);
+  }, 30_000);
+
+  /** Signs in to a running dashboard as owner and returns a JSON caller. */
+  const signIn = async (secret: string) => {
+    const base = lines.find((l) => l.startsWith("Owner dashboard: "))!.slice("Owner dashboard: ".length).replace(/\/$/, "");
+    const res = await fetch(`${base}/api/login`, {
+      method: "POST",
+      headers: { "x-requested-with": "dashboard" },
+      body: JSON.stringify({ username: "owner", password: PASSWORD, code: totpCode(secret, Math.floor(Date.now() / 30_000)) }),
+    });
+    const cookie = res.headers.get("set-cookie")!.split(";")[0]!;
+    const { csrf } = (await res.json()) as { csrf: string };
+    return async (path: string, body?: unknown) =>
+      (await fetch(`${base}${path}`, {
+        method: body === undefined ? "GET" : "POST",
+        headers: { cookie, "x-csrf-token": csrf, "x-requested-with": "dashboard" },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      })).json() as Promise<Record<string, unknown>>;
+  };
+  const waitForLast = async (api: Awaited<ReturnType<typeof signIn>>, answer = false) => {
+    for (;;) {
+      const s = await api("/api/launch");
+      if (s.last) return s.last as { exitCode: number; output: string[]; startedBy: string };
+      if (answer) {
+        for (const p of ((await api("/api/state")).pending as ApprovalRequest[])) await api(`/api/approvals/${p.id}`, { approve: true });
+      }
+      await new Promise((r) => setTimeout(r, 10));
+    }
+  };
+
+  it("serve needs a database and takes no options", async () => {
+    expect(parseSimArgs(["serve"])).toMatchObject({ command: "serve" });
+    expect(() => parseSimArgs(["serve", "--stub"])).toThrow("serve takes no options");
+    expect(await main(["serve"], { ...deps(), db: null })).toBe(2);
+    expect(lines).toEqual(["serve needs DATABASE_URL: runs started from the dashboard are saved in the database."]);
+    expect(launchJobs().map((j) => j.noticeId)).toContain("STUB-E02");
+  });
+
+  it("serve stays up, starts a run from the page and saves it in the database", async () => {
+    const u = await newUser("owner", PASSWORD);
+    await new PgUserStore(db).put(u);
+    let last: { exitCode: number; output: string[]; startedBy: string } | undefined;
+    const code = await main(["serve"], {
+      ...deps(),
+      untilStopped: async () => {
+        const api = await signIn(u.totpSecret);
+        expect(await api("/api/launch", { command: "closeout", stub: true, seed: 1 })).toMatchObject({ running: { argv: ["closeout", "--seed", "1", "--stub"] } });
+        last = await waitForLast(api);
+      },
+    });
+    expect(code).toBe(0);
+    expect(lines.slice(1, 2)).toEqual(["Start runs and answer approvals there. Press Ctrl+C to stop."]);
+    expect(last).toMatchObject({ exitCode: 0, startedBy: "owner" });
+    expect(last!.output.at(-1)).toMatch(/^Saved to the database\./);
+    expect((await new RunStore(db).list()).map((r) => r.runId)).toEqual(["closeout-cloud-2026-11-10T00-00-00-000Z-1"]);
+  }, 30_000);
+
+  it("a run started from serve asks its approvals on the dashboard", async () => {
+    const u = await newUser("owner", PASSWORD);
+    await new PgUserStore(db).put(u);
+    let last: { exitCode: number } | undefined;
+    await main(["serve"], {
+      ...deps(),
+      providers: stubBidProviders("cloud"),
+      untilStopped: async () => {
+        const api = await signIn(u.totpSecret);
+        await api("/api/launch", { command: "bid", job: "STUB-E02", seed: 2 });
+        last = await waitForLast(api, true);
+      },
+    });
+    expect(last).toMatchObject({ exitCode: 0 });
+    const runs = new RunStore(db);
+    const [run] = await runs.list();
+    const report = (await runs.report(run!.runId)) as { approvals: Array<{ gate: string; decidedBy: string }> };
+    expect(report.approvals.find((a) => a.gate === "submit_bid")!.decidedBy).toBe("owner:owner");
   }, 30_000);
 });
