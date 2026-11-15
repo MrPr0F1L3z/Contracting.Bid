@@ -1,3 +1,4 @@
+import { hireDetails } from "../approvals/details.js";
 import type { ApprovalQueue, ApprovalRequest } from "../approvals/approvals.js";
 import { ROLES, isRole, type Role } from "../config/roles.js";
 import type { EventLog } from "../events/eventLog.js";
@@ -88,6 +89,7 @@ export function proposeHireTool(hirerId: number, ctx: HiringContext): ToolHandle
         gate: "hire_agent",
         requestedBy: `${hirer.role}#${hirer.id}`,
         summary: `Hire ${parsed.role} with a $${parsed.budgetUsd} budget. ${parsed.justification}`.trim(),
+        details: hireDetails({ role: parsed.role, budgetUsd: parsed.budgetUsd, hirer: `${hirer.role}#${hirer.id}`, justification: parsed.justification, instructions: parsed.instructions }),
         amountUsd: parsed.budgetUsd,
         ...(automatic ? { autoApproveReason: INITIAL_HIRE_REASON } : {}),
       });

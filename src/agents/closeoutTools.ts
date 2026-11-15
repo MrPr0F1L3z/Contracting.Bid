@@ -1,3 +1,4 @@
+import { closeDetails } from "../approvals/details.js";
 import type { AgentRecord } from "./registry.js";
 import type { ToolHandler } from "./loop.js";
 import type { Company } from "../sim/company.js";
@@ -128,6 +129,7 @@ export function closeProjectTool(c: Company, agent: AgentRecord, ledger: LedgerW
         gate: "close_project",
         requestedBy: actorOf(agent),
         summary: `Close ${ledger.site.bid.opportunity.noticeId}: received ${usd(account.receivedUsd)}, paid out ${usd(account.paidOutUsd)}, cash profit ${usd(account.cashProfitUsd)}. ${typeof input.summary === "string" ? input.summary : ""}`.trim(),
+        details: closeDetails(ledger.site.bid.opportunity, account, input.summary),
       });
       if (req.status !== "approved") return err(`The owner did not close the project${req.reason ? `: ${req.reason}` : ""}.`);
       c.event("project_closed", "owner", { ...account });

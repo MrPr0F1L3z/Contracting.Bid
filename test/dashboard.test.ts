@@ -194,6 +194,28 @@ describe("DashboardServer over HTTP (functional)", () => {
     await rm(dir, { recursive: true, force: true });
   });
 
+  it("serves its fonts without sign-in, cacheable, and nothing else under /fonts", async () => {
+    const res = await fetch(base + "/fonts/archivo-800.woff2");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("font/woff2");
+    expect(res.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(Buffer.from(await res.arrayBuffer()).subarray(0, 4).toString("latin1")).toBe("wOF2");
+    for (const path of ["/fonts/", "/fonts/nope.woff2", "/fonts/..%2Fpackage.json", "/fonts/archivo-800.woff2/x"]) {
+      expect((await fetch(base + path)).status, path).toBe(404);
+    }
+    expect((await fetch(base + "/fonts/archivo-800.woff2", { method: "POST" })).status).not.toBe(200);
+  });
+
+  it("shows an approval's structured details to the signed-in owner", async () => {
+    const details = { title: "Roof replacement", subtitle: "GSA · STUB-X01", facts: [{ label: "Location", value: "Denver, CO" }], notes: [{ label: "Scope", text: "Replace the roof." }] };
+    void d.approver("run-9")({ id: 1, gate: "pursue_opportunity", requestedBy: "president#1", summary: "Pursue it.", details, status: "pending", autoApproved: false });
+    const c = await signedIn();
+    const state = (await c.call("/api/state")).body as { pending: Array<{ details?: unknown; runId?: string }> };
+    expect(state.pending).toHaveLength(1);
+    expect(state.pending[0]).toMatchObject({ details, runId: "run-9" });
+  });
+
   it("serves the page to anyone, with strict security headers", async () => {
     const r = await client(base).call("/");
     expect(r.status).toBe(200);

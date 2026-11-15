@@ -1,3 +1,4 @@
+import { changeOrderDetails, contractDetails } from "../approvals/details.js";
 import type { AgentRecord } from "./registry.js";
 import type { ToolHandler } from "./loop.js";
 import type { Company } from "../sim/company.js";
@@ -37,6 +38,7 @@ export function kickoffTools(c: Company, agent: AgentRecord, site: SiteWorld, st
           gate: "sign_contract",
           requestedBy: actorOf(agent),
           summary: `Sign the prime contract for ${job} at ${usd(site.contractPriceUsd)}, ${site.contractDays} working days, liquidated damages ${usd(site.ldPerDayUsd)} per day late.`,
+          details: contractDetails(site.bid.opportunity, site.contractPriceUsd, site.contractDays, site.ldPerDayUsd),
           amountUsd: site.contractPriceUsd,
         });
         if (req.status !== "approved") return err(`The owner did not sign${req.reason ? `: ${req.reason}` : ""}.`);
@@ -189,6 +191,7 @@ export function priceChangeOrderTool(c: Company, agent: AgentRecord, site: SiteW
         gate: "approve_change_order",
         requestedBy: actorOf(agent),
         summary: `Change order on ${site.bid.opportunity.noticeId}: ${usd(Math.round(price))} and ${days} days. ${problem.description} ${typeof input.justification === "string" ? input.justification : ""}`.trim(),
+        details: changeOrderDetails(site.bid.opportunity, Math.round(price), days, problem.description, input.justification),
         amountUsd: Math.round(price),
       });
       if (req.status !== "approved") return err(`The owner rejected this change order${req.reason ? `: ${req.reason}` : ""}. You may revise it.`);

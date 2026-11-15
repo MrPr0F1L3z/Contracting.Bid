@@ -1,3 +1,5 @@
+import type { ApprovalDetails } from "./details.js";
+
 /** Every action that needs the owner's approval. See the POC spec. */
 export const GATES = [
   "hire_agent",
@@ -25,7 +27,10 @@ export interface ApprovalRequest {
   id: number;
   gate: Gate;
   requestedBy: string;
+  /** The request as one plain sentence: for the terminal, the event log and the database. */
   summary: string;
+  /** The same request as a title, labelled facts and notes, for the dashboard to lay out. */
+  details?: ApprovalDetails;
   amountUsd?: number;
   /** Set for a batch: the owner may approve all of it or only some items. */
   items?: ApprovalItem[];
@@ -55,6 +60,7 @@ export class ApprovalQueue {
     gate: Gate;
     requestedBy: string;
     summary: string;
+    details?: ApprovalDetails;
     amountUsd?: number;
     items?: ApprovalItem[];
     autoApproveReason?: string;

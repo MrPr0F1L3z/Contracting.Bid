@@ -20,11 +20,11 @@ The full POC spec lives in the project's Claude Doc, "Contracting.Bid POC: Proce
 | `src/events/` | Append-only event log, in memory during a run |
 | `src/db/` | The `Db` interface over `pg`, the migration runner, and the Postgres stores for runs, events and logins |
 | `src/budget/` | Per-call cost and budgets that warn at 80% and stop at 100% |
-| `src/approvals/` | The nine owner approval gates and the approval queue, with batch approvals that can be approved in full or item by item |
+| `src/approvals/` | The nine owner approval gates and the approval queue, with batch approvals that can be approved in full or item by item. `details.ts` builds each request's structured details (title, labelled facts, notes) so the dashboard can lay it out; the `summary` sentence stays for the terminal, event log and database |
 | `src/opportunities/` | The `OpportunitySource` interface, the stub source of made-up solicitations (two each at easy, moderate and complex), the seeded picker, and a coverage planner that spreads runs across complexity levels |
 | `src/agents/` | Agent records and the hiring policy, the agent tool loop (budgets, event logging, Claude's thinking passed back unchanged), and the hiring tools |
 | `src/gpu/` | Pauses the owner's listed GPU processes before a run and always resumes them afterwards; checks vLLM lanes and speed and restarts it when needed |
-| `src/dashboard/` | The owner dashboard: a local web page for approvals, the live event log and saved reports |
+| `src/dashboard/` | The owner dashboard: a local web page for approvals, the live event log and saved reports. It uses the Blueprint design from `web/src/design` (colours copied and checked by a test) and serves its own fonts from `/fonts/` |
 | `src/cli/` | `pnpm gpu` (vLLM check, ensure, load test), `pnpm sim` (hiring, bench, bid, job, closeout, dashboard, user) and `pnpm db` (migrate, status, import) |
 | `db/migrations/` | Postgres schema for the data model, applied in order when a run starts (or by `pnpm db migrate`) |
 | `test/` | Unit tests for every function, plus functional tests that apply the schema to an embedded Postgres |

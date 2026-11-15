@@ -7,6 +7,7 @@ import type { ApprovalRequest } from "../approvals/approvals.js";
 import type { ApprovalDecision, Approver } from "../agents/hiringTools.js";
 import { InMemoryEventLog, type EventInput, type EventLog, type LoggedEvent } from "../events/eventLog.js";
 import { DASHBOARD_HTML } from "./page.js";
+import { fontFile } from "./fonts.js";
 import type { RunLauncher } from "./launcher.js";
 import { LoginLimiter, SessionStore, hashPassword, readCookie, verifyPassword, verifyTotp, type Session, type UserStore } from "./auth.js";
 
@@ -365,6 +366,14 @@ export class DashboardServer {
         "content-security-policy": "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
       }));
       res.end(DASHBOARD_HTML);
+      return;
+    }
+    if (req.method === "GET" && url.pathname.startsWith("/fonts/")) {
+      // Static and the same for everyone, so no sign-in is needed and the browser may keep them.
+      const bytes = fontFile(url.pathname.slice("/fonts/".length));
+      if (!bytes) return this.send(res, 404, { error: "Not found" });
+      res.writeHead(200, this.headers({ "content-type": "font/woff2", "cache-control": "public, max-age=31536000, immutable" }));
+      res.end(bytes);
       return;
     }
     if (!url.pathname.startsWith("/api/")) return this.send(res, 404, { error: "Not found" });
