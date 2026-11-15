@@ -28,6 +28,7 @@ The full POC spec lives in the project's Claude Doc, "Contracting.Bid POC: Proce
 | `src/cli/` | `pnpm gpu` (vLLM check, ensure, load test), `pnpm sim` (hiring, bench, bid, job, closeout, dashboard, user) and `pnpm db` (migrate, status, import) |
 | `db/migrations/` | Postgres schema for the data model, applied in order when a run starts (or by `pnpm db migrate`) |
 | `test/` | Unit tests for every function, plus functional tests that apply the schema to an embedded Postgres |
+| `web/` | The customer-facing site and workspace (Next.js). A separate pnpm workspace package with its own tests and CI job; front end only, on sample data. See `web/README.md` |
 
 ## Determinism and replay
 

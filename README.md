@@ -14,6 +14,8 @@ A general contracting company run by AI agents. The agents fill the company's ro
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the code layout.
 
+The customer-facing website and workspace are a separate package in [`web/`](web/README.md). It is a front end on sample data and does not talk to the simulation yet.
+
 ## Requirements
 
 - Node.js 22 and pnpm (`corepack enable`)
