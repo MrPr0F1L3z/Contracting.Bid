@@ -21,6 +21,24 @@ pnpm e2e          # browser tests against the production build (run `pnpm build`
 
 `pnpm e2e` needs Chromium: `pnpm exec playwright install chromium`, or set `PW_CHROMIUM_PATH` to one you already have.
 
+## Two templates
+
+The site is built in one design template at a time. **Blueprint** is the default. **Hi-Vis** is the same site, page for page, in the other design, kept so the two can be compared whole.
+
+```bash
+pnpm dev:hivis    # Hi-Vis on http://localhost:3001, alongside `pnpm dev` on 3000
+```
+
+```bash
+pnpm build:hivis && pnpm start:hivis   # production build of Hi-Vis on 3001
+```
+
+```bash
+pnpm e2e:hivis    # the browser tests against the Hi-Vis build
+```
+
+The switch is the `NEXT_PUBLIC_CB_TEMPLATE` environment variable (`hivis`, anything else is Blueprint). Hi-Vis builds into `.next-hivis`, so both can run at once. These scripts set the variable inline, which works in macOS and Linux shells; on Windows use WSL or set the variable first.
+
 ## Routes
 
 | URL | Screen |

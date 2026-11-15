@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
-// What a visitor does, start to finish. Runs against the production build.
+// What a visitor does, start to finish. Runs against the production build, in whichever template it was built.
+const TEMPLATE = (process.env.NEXT_PUBLIC_CB_TEMPLATE ?? '').trim().toLowerCase() === 'hivis' ? 'hivis' : 'blueprint';
 
 async function events(page: Page): Promise<string[]> {
   return page.evaluate(() => ((window as { dataLayer?: { event: string }[] }).dataLayer ?? []).map((e) => e.event));
@@ -8,7 +9,9 @@ async function events(page: Page): Promise<string[]> {
 
 test('sign up from the home page, set up, import a bid and submit it', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Every bid, sub and dollar on one sheet.');
+  // Blueprint's headline or Hi-Vis's, whichever template was built.
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(/Every bid, sub and dollar on one sheet\.|Find it\. Bid it\./);
+  await expect(page.locator('html')).toHaveAttribute('data-theme', TEMPLATE);
 
   await page.getByLabel('Work email').fill('sam@example.com');
   await page.locator('.cb-signup').getByRole('button', { name: 'Start free trial' }).click();
@@ -100,7 +103,7 @@ test('no page logs a console error', async ({ page }) => {
   page.on('console', (m) => { if (m.type() === 'error') problems.push(m.text()); });
   for (const url of ['/', '/pricing', '/signin', '/signup', '/reset', '/reset/new', '/reset/sent', '/onboarding', '/terms', '/privacy', '/trial-ended', '/app', '/app/welcome', '/app/find-work', '/app/bids', '/app/projects', '/app/settings']) {
     await page.goto(url);
-    await expect(page.locator('[data-template="blueprint"]')).toBeVisible();
+    await expect(page.locator(`[data-template="${TEMPLATE}"]`).first()).toBeVisible();
   }
   expect(problems).toEqual([]);
 });

@@ -265,9 +265,9 @@ for (const view of CB.VIEWS) {
   });
 }
 
-test('Blueprint workspace: unknown view falls back to overview; other templates ignore view', () => {
+test('workspace: unknown view falls back to overview; Field has a home screen only', () => {
   assert.match(html(h(CB.Workspace, { view: 'nope' })), /data-view="overview"/);
-  assert.doesNotMatch(html(h(CB.Workspace, { template: 'hivis', view: 'money' })), /data-view/);
+  assert.doesNotMatch(html(h(CB.Workspace, { template: 'field', view: 'money' })), /data-view/);
 });
 
 test('viewParent maps detail screens to their nav item', () => {
@@ -492,6 +492,63 @@ test('setLinks swaps in real URLs for pages and workspace screens, then restores
   assert.match(html(h(CB.PricingPage, {})), /href="\/pricing"/, 'a bad resolver is ignored');
   CB.setLinks({ page: (p) => '#' + p, view: (v) => '#' + v });
   assert.match(html(h(CB.PricingPage, {})), /href="#pricing"/);
+});
+
+for (const view of CB.VIEWS) {
+  test('Hi-Vis workspace renders the ' + view + ' screen', () => {
+    const out = html(h(CB.Workspace, { template: 'hivis', view }));
+    assert.match(out, /data-theme="hivis" data-template="hivis"/);
+    assert.match(out, new RegExp('data-view="' + view + '"'));
+    assert.match(out, /cb-appnav-top/);
+    assert.doesNotMatch(out, /cb-appnav-side/);
+    assert.match(out, new RegExp('href="#' + CB.viewParent(view) + '" aria-current="page"'));
+    assert.equal((out.match(/aria-current="page"/g) || []).length, 1);
+    assert.equal((out.match(/<h1/g) || []).length, 1);
+    assert.match(out, /data-track="new_bid"/);
+  });
+}
+
+test('Hi-Vis overview is the scoreboard and the board, with every job openable', () => {
+  const out = html(h(CB.Workspace, { template: 'hivis' }));
+  assert.match(out, /cb-scoreboard/);
+  assert.equal((out.match(/class="cb-col"/g) || []).length, 5);
+  assert.equal((out.match(/data-track="board_/g) || []).length, CB.sample.projects.length);
+  assert.doesNotMatch(html(h(CB.Workspace, { template: 'hivis', view: 'money' })), /cb-scoreboard/);
+  assert.doesNotMatch(html(h(CB.Workspace, { template: 'blueprint' })), /cb-scoreboard|cb-board/);
+});
+
+test('viewForStage maps each lifecycle stage to a screen that exists', () => {
+  for (const s of CB.STAGES) assert.ok(CB.VIEWS.includes(CB.viewForStage(s.id)), s.id);
+  assert.equal(CB.viewForStage('bid'), 'bid_detail');
+  assert.equal(CB.viewForStage('closeout'), 'closeout');
+  assert.equal(CB.viewForStage('nope'), 'projects');
+  assert.equal(CB.viewForStage('constructor'), 'projects');
+});
+
+test('site pages take a template and default to Blueprint', () => {
+  const pages = [[CB.PricingPage, {}], [CB.AuthPage, { mode: 'signin' }], [CB.Onboarding, {}], [CB.MessagePage, { kind: 'trial_ended' }], [CB.ArticlePage, { kind: 'terms' }]];
+  for (const [Page, props] of pages) {
+    assert.match(html(h(Page, props)), /data-theme="blueprint" data-template="blueprint"/);
+    assert.match(html(h(Page, { ...props, template: 'hivis' })), /data-theme="hivis" data-template="hivis"/);
+    assert.match(html(h(Page, { ...props, template: 'zzz' })), /data-theme="blueprint"/);
+  }
+  assert.match(html(h(CB.PricingPage, { template: 'hivis' })), /cb-band-shell.*cb-mnav cb-on-shell/s);
+  assert.doesNotMatch(html(h(CB.PricingPage, {})), /cb-mnav cb-on-shell/);
+});
+
+test('Hi-Vis landing links to the rest of the site and has the footer', () => {
+  const out = html(h(CB.LandingPage, { template: 'hivis' }));
+  assert.match(out, /href="#pricing"/);
+  assert.match(out, /data-section="footer"/);
+});
+
+test('Prototype carries its template to every page', () => {
+  for (const pg of CB.PAGES) {
+    const out = html(h(CB.Prototype, { template: 'hivis', start: pg }));
+    assert.match(out, /data-template="hivis"/, pg);
+    assert.doesNotMatch(out, /data-template="blueprint"/, pg);
+  }
+  assert.match(html(h(CB.Prototype, { start: 'app' })), /data-template="blueprint"/);
 });
 
 test('signup note states the 7-day trial', () => {

@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import '@fontsource/archivo/600.css';
 import '@fontsource/archivo/700.css';
 import '@fontsource/archivo/800.css';
+import '@fontsource/archivo/900.css';
 import '@fontsource/ibm-plex-sans/400.css';
 import '@fontsource/ibm-plex-sans/500.css';
 import '@fontsource/ibm-plex-sans/600.css';
@@ -10,6 +11,7 @@ import '@fontsource/ibm-plex-mono/500.css';
 import '@/design/tokens.css';
 import '@/design/components.css';
 import './globals.css';
+import { TEMPLATE } from '@/lib/template';
 import { Analytics } from '@/screens/Analytics';
 
 export const metadata: Metadata = {
@@ -22,7 +24,7 @@ export const viewport: Viewport = { width: 'device-width', initialScale: 1 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" data-theme="blueprint">
+    <html lang="en" data-theme={TEMPLATE}>
       <body>
         {children}
         <Analytics />

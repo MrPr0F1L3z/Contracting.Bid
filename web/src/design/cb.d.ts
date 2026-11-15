@@ -39,13 +39,13 @@ export interface TextFieldProps { label: string; type?: string; name?: string; v
 export declare function TextField(props: TextFieldProps): React.ReactElement;
 export interface ChipSelectProps { label: string; options: string[]; value?: string[]; defaultValue?: string[]; multiple?: boolean; hint?: string; onChange?: (selected: string[]) => void }
 export declare function ChipSelect(props: ChipSelectProps): React.ReactElement;
-export interface PricingPageProps { onNavigate?: (page: SitePage) => void }
+export interface PricingPageProps { template?: Template; onNavigate?: (page: SitePage) => void }
 export declare function PricingPage(props: PricingPageProps): React.ReactElement;
-export interface AuthPageProps { mode?: 'signup' | 'signin' | 'reset' | 'new_password'; email?: string; error?: string; fieldError?: string; onNavigate?: (page: SitePage) => void }
+export interface AuthPageProps { template?: Template; mode?: 'signup' | 'signin' | 'reset' | 'new_password'; email?: string; error?: string; fieldError?: string; onNavigate?: (page: SitePage) => void }
 export declare function AuthPage(props: AuthPageProps): React.ReactElement;
-export interface OnboardingProps { step?: number; onDone?: (start: 'import' | 'match' | 'sample') => void; onNavigate?: (page: SitePage) => void }
+export interface OnboardingProps { template?: Template; step?: number; onDone?: (start: 'import' | 'match' | 'sample') => void; onNavigate?: (page: SitePage) => void }
 export declare function Onboarding(props: OnboardingProps): React.ReactElement;
-export interface PrototypeProps { start?: SitePage; view?: WorkspaceView; onNavigate?: (page: SitePage) => void }
+export interface PrototypeProps { template?: Template; start?: SitePage; view?: WorkspaceView; onNavigate?: (page: SitePage) => void }
 export declare function Prototype(props: PrototypeProps): React.ReactElement;
 export interface NoticeProps { tone?: 'info' | 'success' | 'warning' | 'danger'; title?: string; children?: React.ReactNode; action?: string; onAction?: () => void; trackId?: string }
 export declare function Notice(props: NoticeProps): React.ReactElement;
@@ -55,15 +55,15 @@ export interface DialogProps { open?: boolean; title: string; children?: React.R
 export declare function Dialog(props: DialogProps): React.ReactElement | null;
 export interface SkeletonProps { lines?: number; label?: string }
 export declare function Skeleton(props: SkeletonProps): React.ReactElement;
-export interface MessagePageProps { kind?: 'trial_ended' | 'not_found' | 'error' | 'reset_sent'; onNavigate?: (page: SitePage) => void }
+export interface MessagePageProps { template?: Template; kind?: 'trial_ended' | 'not_found' | 'error' | 'reset_sent'; onNavigate?: (page: SitePage) => void }
 export declare function MessagePage(props: MessagePageProps): React.ReactElement;
-export interface ArticlePageProps { kind?: 'terms' | 'privacy'; onNavigate?: (page: SitePage) => void }
+export interface ArticlePageProps { template?: Template; kind?: 'terms' | 'privacy'; onNavigate?: (page: SitePage) => void }
 export declare function ArticlePage(props: ArticlePageProps): React.ReactElement;
 export interface ExperimentProps { name: string; variants: Record<string, React.ReactNode | ((key: string) => React.ReactNode)>; userId?: string; weights?: number[]; force?: string }
 export declare function Experiment(props: ExperimentProps): React.ReactElement | null;
-export interface LandingPageProps { template?: Template; /** Blueprint only. */ onNavigate?: (page: SitePage, email?: string) => void }
+export interface LandingPageProps { template?: Template; /** Blueprint and Hi-Vis. */ onNavigate?: (page: SitePage, email?: string) => void }
 export declare function LandingPage(props: LandingPageProps): React.ReactElement;
-export interface WorkspaceProps { template?: Template; /** Blueprint only: the opening screen. */ view?: WorkspaceView; /** Blueprint only. */ onNavigate?: (view: WorkspaceView) => void; onPlans?: () => void; onSignOut?: () => void }
+export interface WorkspaceProps { template?: Template; /** Blueprint and Hi-Vis: the opening screen. */ view?: WorkspaceView; /** Blueprint and Hi-Vis. */ onNavigate?: (view: WorkspaceView) => void; onPlans?: () => void; onSignOut?: () => void }
 export declare function Workspace(props: WorkspaceProps): React.ReactElement;
 export interface TrackPayload { event: string; props: Record<string, unknown>; at: number }
 export declare function assignVariant(userId: string, experiment: string, variants: string[], weights?: number[]): string | null;
@@ -89,3 +89,4 @@ export declare function parseMoney(input: string | number | null | undefined): n
 export declare function payRunTotal(rows?: { payee: string; amount: number; status: string }[], selected?: string[]): { count: number; amount: number };
 export declare function setLinks(next: { page?: (page: SitePage) => string; view?: (view: WorkspaceView) => string }): void;
 export declare function modifiedClick(e?: { metaKey?: boolean; ctrlKey?: boolean; shiftKey?: boolean; altKey?: boolean; button?: number }): boolean;
+export declare function viewForStage(stage: string): WorkspaceView;

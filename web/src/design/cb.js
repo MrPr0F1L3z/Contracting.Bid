@@ -349,15 +349,16 @@ import * as React from 'react';
     if (tpl === 'hivis') {
       return frame('landing', tpl, [
         h('div', { key: 'top', className: 'cb-band-shell' },
-          h(MarketingNav, { onShell: true }),
+          h(MarketingNav, { onShell: true, go: p.onNavigate, current: 'home' }),
           section('hero', 'cb-hero cb-hero-poster', [
             h('h1', { key: 'h', className: 'cb-display' }, 'Find it. Bid it.', h('br'), 'Build it. ', h('em', null, 'Get paid.')),
             h('p', { key: 'p', className: 'cb-lead' }, 'One platform from the first bid alert to the final lien waiver. Your subs, your schedule and your money stay on the same job.'),
-            h(SignupForm, { key: 'f', onShell: true, ctaVariant: 'accent', trackId: 'hero_signup' })
+            h(SignupForm, { key: 'f', onShell: true, ctaVariant: 'accent', trackId: 'hero_signup', onSubmit: function (email) { if (p.onNavigate) p.onNavigate('signup', email); } })
           ]),
           h(StageGrid, { key: 'g', onShell: true })),
         h(ProofTrio, { key: 'proof' }),
-        section('cta', 'cb-cta-band', [h('h2', { key: 'h', className: 'cb-display-lg' }, 'Put your next bid through it.'), h(Button, { key: 'b', variant: 'primary', size: 'lg', trackId: 'footer_signup' }, 'Start free trial')])
+        section('cta', 'cb-cta-band', [h('h2', { key: 'h', className: 'cb-display-lg' }, 'Put your next bid through it.'), h(Button, { key: 'b', variant: 'primary', size: 'lg', trackId: 'footer_signup', onClick: function () { if (p.onNavigate) p.onNavigate('signup'); } }, 'Start free trial')]),
+        h(SiteFooter, { key: 'f', go: p.onNavigate })
       ]);
     }
     if (tpl === 'field') {
@@ -1037,46 +1038,61 @@ import * as React from 'react';
   VIEW_PARENT.welcome = 'overview'; VIEW_PARENT.import_bid = 'bids'; VIEW_PARENT.sub_detail = 'subs_vendors'; VIEW_PARENT.pay_run = 'money'; VIEW_PARENT.change_order = 'projects';
 
 
-  function BlueprintWorkspace(p) {
+  // Hi-Vis keeps its own home screen: a scoreboard on the dark band, then every job on a board by stage.
+  var BOARD_COLUMNS = [['Find', ['find', 'research']], ['Bid', ['bid', 'award']], ['Build', ['subs', 'schedule']], ['Bill & pay', ['bill', 'pay']], ['Closeout', ['closeout']]];
+  var STAGE_VIEW = { find: 'find_work', research: 'find_work', bid: 'bid_detail', award: 'award', subs: 'subs_vendors', schedule: 'project_detail', bill: 'pay_app', pay: 'pay_run', closeout: 'closeout' };
+  // Pure: the screen a job on the board opens, by its stage.
+  function viewForStage(stage) { return Object.prototype.hasOwnProperty.call(STAGE_VIEW, stage) ? STAGE_VIEW[stage] : 'projects'; }
+  function Scoreboard() {
+    return h('div', { className: 'cb-scoreboard', 'data-section': 'kpis' },
+      h('h1', { className: 'cb-display-lg' }, '1 bid due this week.', h('br'), '1 payment overdue.'),
+      h(MoneySummary, { revenue: sample.revenue, expense: sample.expense, onShell: true, period: 'Last 6 months · sample data' }));
+  }
+  function boardOverview(p) {
+    return [
+      h('div', { className: 'cb-board', 'data-section': 'pipeline' }, BOARD_COLUMNS.map(function (c) {
+        var items = sample.projects.filter(function (x) { return c[1].indexOf(x.stage) >= 0; });
+        return h('div', { key: c[0], className: 'cb-col' },
+          h('div', { className: 'cb-col-h' }, h('span', null, c[0]), h('span', { className: 'cb-num' }, items.length)),
+          items.map(function (x) { return h(OpportunityCard, Object.assign({ key: x.id }, x, { match: undefined, action: 'Open', trackId: 'board_' + x.id, onAction: function () { p.go(viewForStage(x.stage)); } })); }));
+      })),
+      h('div', { className: 'cb-grid-2' }, mkChartCard(), mkPayCard(p.go))
+    ];
+  }
+  function viewFor(tpl, view) { return tpl === 'hivis' && view === 'overview' ? boardOverview : BLUEPRINT_VIEWS[view]; }
+
+  function FullWorkspace(p) {
+    var tpl = p.template === 'hivis' ? 'hivis' : 'blueprint';
     var st = React.useState(VIEWS.indexOf(p.view) >= 0 ? p.view : 'overview');
     var view = st[0], parent = viewParent(view);
     function go(v) { if (VIEWS.indexOf(v) < 0) return; st[1](v); if (p.onNavigate) p.onNavigate(v); }
     function settingsClick(e) { if (modifiedClick(e)) return; e.preventDefault(); track('click', { id: 'nav_settings' }); go('settings'); }
-    return frame('app', 'blueprint', h('div', { className: 'cb-shell-layout', 'data-view': view },
-      h(AppNav, { orient: 'side', current: parent, onNavigate: go },
-        h('a', { className: 'cb-appnav-foot', href: viewHref('settings'), 'aria-current': view === 'settings' ? 'page' : undefined, 'data-track': 'nav_settings', onClick: settingsClick }, 'Settings')),
-      h('main', { className: 'cb-main' },
-        view === 'settings' ? null : h('div', { className: 'cb-trial', 'data-section': 'trial', role: 'status' }, h('span', null, h('strong', null, '6 days left'), ' in your free trial. No card on file.'), h(Button, { variant: 'ghost', size: 'sm', trackId: 'trial_choose_plan', onClick: function () { go('settings'); } }, 'Choose a plan')),
-        h(ViewHost, { key: view, View: BLUEPRINT_VIEWS[view], go: go, onSignOut: p.onSignOut, onPlans: p.onPlans }))));
+    var settings = h('a', { className: 'cb-appnav-foot', href: viewHref('settings'), 'aria-current': view === 'settings' ? 'page' : undefined, 'data-track': 'nav_settings', onClick: settingsClick }, 'Settings');
+    var main = h('main', { className: 'cb-main' },
+      view === 'settings' ? null : h('div', { className: 'cb-trial', 'data-section': 'trial', role: 'status' }, h('span', null, h('strong', null, '6 days left'), ' in your free trial. No card on file.'), h(Button, { variant: 'ghost', size: 'sm', trackId: 'trial_choose_plan', onClick: function () { go('settings'); } }, 'Choose a plan')),
+      h(ViewHost, { key: view, View: viewFor(tpl, view), go: go, onSignOut: p.onSignOut, onPlans: p.onPlans }));
+    if (tpl === 'hivis') {
+      return frame('app', tpl, h('div', { className: 'cb-top-layout', 'data-view': view },
+        h('div', { className: 'cb-band-shell' },
+          h(AppNav, { orient: 'top', current: parent, onNavigate: go }, settings, h(Button, { variant: 'accent', size: 'sm', trackId: 'new_bid', onClick: function () { go('bids'); } }, 'New bid')),
+          view === 'overview' ? h(Scoreboard) : null),
+        main));
+    }
+    return frame('app', tpl, h('div', { className: 'cb-shell-layout', 'data-view': view }, h(AppNav, { orient: 'side', current: parent, onNavigate: go }, settings), main));
   }
   // Each screen mounts as its own component so its state resets when you leave it.
   function ViewHost(p) { return h(React.Fragment, null, React.Children.toArray(p.View({ go: p.go, onSignOut: p.onSignOut, onPlans: p.onPlans }))); }
 
   function Workspace(p) {
     var tpl = templateOf(p);
-    var rev = sample.revenue, exp = sample.expense, m = profitMargin(rev, exp);
-    var chartCard = h('div', { className: 'cb-card', 'data-section': 'profit' }, h('div', { className: 'cb-card-h' }, 'Revenue and expenses', h('span', { className: 'cb-meta' }, 'Last 6 months')), h(ProfitChart, { data: sample.months }));
-    var payCard = h('div', { className: 'cb-card', 'data-section': 'payables' }, h('div', { className: 'cb-card-h' }, 'Subs and vendors to pay', h(Button, { variant: 'ghost', size: 'sm', trackId: 'payables_all' }, 'View all')), h(PayablesTable, { rows: sample.payables }));
-
-    if (tpl === 'hivis') {
-      var cols = [['Find', ['find', 'research']], ['Bid', ['bid', 'award']], ['Build', ['subs', 'schedule']], ['Bill & pay', ['bill', 'pay']], ['Closeout', ['closeout']]];
-      return frame('app', tpl, [
-        h('div', { key: 'top', className: 'cb-band-shell' },
-          h(AppNav, { orient: 'top', items: ['Board', 'Find work', 'Subs & vendors', 'Schedule', 'Money'] }, h(Button, { variant: 'accent', size: 'sm', trackId: 'new_bid' }, 'New bid')),
-          h('div', { className: 'cb-scoreboard', 'data-section': 'kpis' },
-            h('h1', { className: 'cb-display-lg' }, '1 bid due this week.', h('br'), '1 payment overdue.'),
-            h(MoneySummary, { revenue: rev, expense: exp, onShell: true, period: 'Last 6 months · sample data' }))),
-        h('div', { key: 'board', className: 'cb-board', 'data-section': 'pipeline' }, cols.map(function (c) {
-          var items = sample.projects.filter(function (x) { return c[1].indexOf(x.stage) >= 0; });
-          return h('div', { key: c[0], className: 'cb-col' },
-            h('div', { className: 'cb-col-h' }, h('span', null, c[0]), h('span', { className: 'cb-num' }, items.length)),
-            items.map(function (x) { return h(OpportunityCard, Object.assign({ key: x.id }, x, { match: undefined })); }));
-        })),
-        h('div', { key: 'row', className: 'cb-grid-2' }, chartCard, payCard)
-      ]);
-    }
-
-    if (tpl === 'field') {
+    if (tpl !== 'field') return h(FullWorkspace, p);
+    return h(FieldHome, p);
+  }
+  // Field has a home screen only; it has not been built out further.
+  function FieldHome() {
+    var tpl = 'field';
+    var rev = sample.revenue, exp = sample.expense;
+    var chartCard = mkChartCard();
       return frame('app', tpl, [
         h(AppNav, { key: 'n', orient: 'tabs', items: ['Today', 'Jobs', 'People', 'Calendar', 'Money'] }, h(Button, { variant: 'primary', size: 'sm', trackId: 'new_bid' }, 'New bid')),
         h('div', { key: 'hello', className: 'cb-hello' }, h('h1', { className: 'cb-display-lg' }, 'Good morning. Four things need you today.'), sampleTag()),
@@ -1091,9 +1107,6 @@ import * as React from 'react';
               h(LifecycleStepper, { current: x.stage, compact: true }), h('p', { className: 'cb-meta' }, x.due));
           })))
       ]);
-    }
-
-    return h(BlueprintWorkspace, p);
   }
 
   /* ───────── forms ───────── */
@@ -1131,8 +1144,14 @@ import * as React from 'react';
   /* ───────── Blueprint site pages: pricing, sign in, sign up, onboarding ───────── */
 
   function nav(p, page, extra) { return function (e) { if (!p.onNavigate || modifiedClick(e)) return; if (e && e.preventDefault) e.preventDefault(); p.onNavigate(page, extra); }; }
-  function site(page, children) {
-    return h('div', { className: 'cb-tpl cb-site cb-site-' + page, 'data-theme': 'blueprint', 'data-template': 'blueprint', 'data-surface': 'site', 'data-page': page }, keyed(children));
+  function site(page, children, tpl) {
+    var theme = TEMPLATES.indexOf(tpl) >= 0 ? tpl : 'blueprint';
+    return h('div', { className: 'cb-tpl cb-site cb-site-' + page, 'data-theme': theme, 'data-template': theme, 'data-surface': 'site', 'data-page': page }, keyed(children));
+  }
+  // Hi-Vis puts the site navigation on its dark band; the other templates leave it on the page.
+  function siteNav(p, tpl, current) {
+    var bar = h(MarketingNav, { go: p.onNavigate, current: current, onShell: tpl === 'hivis' });
+    return tpl === 'hivis' ? h('div', { className: 'cb-band-shell' }, bar) : bar;
   }
   var TRIAL_LINE = 'Free for 7 days. No credit card needed.';
 
@@ -1149,7 +1168,10 @@ import * as React from 'react';
   };
   function MessagePage(p) {
     var kind = MESSAGES[p.kind] ? p.kind : 'not_found', m = MESSAGES[kind];
-    return site(kind, h('div', { className: 'cb-message' },
+    return site(kind, messageBody(p, kind, m), templateOf(p));
+  }
+  function messageBody(p, kind, m) {
+    return (h('div', { className: 'cb-message' },
       h('a', { href: pageHref('home'), className: 'cb-auth-home', onClick: nav(p, 'home') }, h(Wordmark)),
       h('div', { className: 'cb-message-body' }, h('p', { className: 'cb-message-code' }, m.code), h('h1', { className: 'cb-display-lg' }, m.title), h('p', { className: 'cb-lead' }, m.detail),
         h('div', { className: 'cb-actions' }, h(Button, { variant: 'primary', size: 'lg', trackId: kind + '_primary', onClick: nav(p, m.to) }, m.action),
@@ -1161,14 +1183,14 @@ import * as React from 'react';
     privacy: { title: 'Privacy policy', sections: ['What we collect', 'How we use it', 'Who we share it with', 'How long we keep it', 'Your choices', 'Contact'] }
   };
   function ArticlePage(p) {
-    var kind = ARTICLES[p.kind] ? p.kind : 'terms', a = ARTICLES[kind];
+    var kind = ARTICLES[p.kind] ? p.kind : 'terms', a = ARTICLES[kind], tpl = templateOf(p);
     return site(kind, [
-      h(MarketingNav, { key: 'n', go: p.onNavigate }),
+      siteNav(p, tpl),
       h('article', { key: 'a', className: 'cb-article', 'data-section': 'article' },
         h('h1', { className: 'cb-display-lg' }, a.title), h(StatusPill, { tone: 'warning' }, 'Placeholder. Text to come from counsel'),
         a.sections.map(function (s, i) { return h('section', { key: s }, h('h2', { className: 'cb-h2' }, (i + 1) + '. ' + s), h('p', null, 'This section has not been written yet.')); })),
       h(SiteFooter, { key: 'f', go: p.onNavigate })
-    ]);
+    ], tpl);
   }
 
   var PLANS = [
@@ -1177,8 +1199,9 @@ import * as React from 'react';
     { id: 'company', name: 'Company', price: 'Talk to us', per: '', who: 'Multiple offices or more than 10 people.', features: ['Everything in Team', 'Unlimited people and roles', 'Accounting system connection', 'Help moving your open jobs in'] }
   ];
   function PricingPage(p) {
+    var tpl = templateOf(p);
     return site('pricing', [
-      h(MarketingNav, { key: 'n', go: p.onNavigate, current: 'pricing' }),
+      siteNav(p, tpl, 'pricing'),
       section('hero', 'cb-pricing-head', [
         h('h1', { key: 'h', className: 'cb-display-lg' }, 'Try the whole thing, then pick a plan.'),
         h('p', { key: 'p', className: 'cb-lead' }, 'Every plan starts with the full product. ' + TRIAL_LINE),
@@ -1198,7 +1221,7 @@ import * as React from 'react';
       ]),
       section('cta', 'cb-cta-band', [h('h2', { key: 'h', className: 'cb-display-lg' }, 'Run your whole job from one place.'), h(Button, { key: 'b', variant: 'accent', size: 'lg', trackId: 'footer_signup', onClick: nav(p, 'signup') }, 'Start free trial')]),
       h(SiteFooter, { key: 'f', go: p.onNavigate })
-    ]);
+    ], tpl);
   }
 
   var AUTH = {
@@ -1211,7 +1234,8 @@ import * as React from 'react';
     var mode = AUTH[p.mode] ? p.mode : 'signup', a = AUTH[mode];
     var up = mode === 'signup', inn = mode === 'signin';
     function submit(e) { e.preventDefault(); track(a.event, {}); if (p.onNavigate) p.onNavigate(a.to); }
-    return site(mode, h('div', { className: 'cb-auth' },
+    return site(mode, authBody(), templateOf(p));
+    function authBody() { return h('div', { className: 'cb-auth' },
       h('div', { className: 'cb-auth-main' },
         h('a', { href: pageHref('home'), className: 'cb-auth-home', onClick: nav(p, 'home') }, h(Wordmark)),
         h('form', { className: 'cb-auth-form', onSubmit: submit, 'data-track-form': mode },
@@ -1233,7 +1257,7 @@ import * as React from 'react';
           h('li', null, h('strong', null, 'Tell us what you build.'), ' Trades, service area and the largest job you can bond.'),
           h('li', null, h('strong', null, 'See what fits.'), ' Open projects ranked by how well they match.'),
           h('li', null, h('strong', null, 'Start or import a bid.'), ' Bring one you already have in progress.'))
-          : h(StageGrid, { onShell: true }))));
+          : h(StageGrid, { onShell: true }))); }
   }
 
   var ONBOARD_STEPS = ['Your company', 'What you bid on', 'Your first bid', 'Ready'];
@@ -1269,7 +1293,8 @@ import * as React from 'react';
       { label: 'Project matching', detail: trades[0].length + (trades[0].length === 1 ? ' trade' : ' trades') + ' selected. New matches arrive every morning.', state: 'done' },
       { label: 'First bid', detail: START_CHOICES.filter(function (c) { return c.id === choice[0]; })[0].title + '.', state: 'open' }] })];
     var heads = ['Tell us about your company.', 'What kind of work do you bid on?', 'How do you want to start?', 'You are set up.'];
-    return site('onboarding', h('div', { className: 'cb-onboard', 'data-step': step + 1 },
+    return site('onboarding', onboardBody(), templateOf(p));
+    function onboardBody() { return h('div', { className: 'cb-onboard', 'data-step': step + 1 },
       h('header', { className: 'cb-onboard-top' }, h(Wordmark), h('span', { className: 'cb-meta' }, 'Step ' + (step + 1) + ' of ' + ONBOARD_STEPS.length), h(ProgressBar, { value: step + 1, max: ONBOARD_STEPS.length, label: 'Setup' })),
       h('ol', { className: 'cb-onboard-steps' }, ONBOARD_STEPS.map(function (s, i) { return h('li', { key: s, className: i < step ? 'cb-done' : i === step ? 'cb-current' : undefined, 'aria-current': i === step ? 'step' : undefined }, h('span', { className: 'cb-num' }, i + 1), s); })),
       h('form', { className: 'cb-card cb-card-lg cb-onboard-card', onSubmit: function (e) { e.preventDefault(); if (last) done(); else move(1); } },
@@ -1278,7 +1303,7 @@ import * as React from 'react';
           step > 0 ? h(Button, { variant: 'ghost', trackId: 'onboarding_back', onClick: function () { move(-1); } }, 'Back') : h('span'),
           h('span', { className: 'cb-grow' }),
           !last ? h(Button, { variant: 'ghost', trackId: 'onboarding_skip', onClick: done }, 'Skip setup') : null,
-          h(Button, { type: 'submit', variant: 'primary', size: 'lg' }, last ? 'Open my workspace' : 'Continue')))));
+          h(Button, { type: 'submit', variant: 'primary', size: 'lg' }, last ? 'Open my workspace' : 'Continue')))); }
   }
 
   // The whole Blueprint journey in one component: site → sign up → onboarding → workspace.
@@ -1293,23 +1318,24 @@ import * as React from 'react';
       st[1]({ page: page, email: page === 'signup' && typeof extra === 'string' ? extra : s.email, view: page === 'app' && START_VIEW[extra] ? START_VIEW[extra] : (page === 'app' ? p.view : s.view) });
       if (p.onNavigate) p.onNavigate(page);
     }
-    if (s.page === 'pricing') return h(PricingPage, { onNavigate: go });
-    if (AUTH[s.page]) return h(AuthPage, { key: s.page, mode: s.page, email: s.email, onNavigate: go });
-    if (s.page === 'onboarding') return h(Onboarding, { onNavigate: go });
-    if (s.page === 'terms' || s.page === 'privacy') return h(ArticlePage, { key: s.page, kind: s.page, onNavigate: go });
-    if (MESSAGES[s.page]) return h(MessagePage, { key: s.page, kind: s.page, onNavigate: go });
-    if (s.page === 'app') return h(Workspace, { key: s.view || 'overview', template: 'blueprint', view: s.view, onSignOut: function () { go('home'); }, onPlans: function () { go('pricing'); } });
-    return h(LandingPage, { template: 'blueprint', onNavigate: go });
+    var tpl = templateOf(p);
+    if (s.page === 'pricing') return h(PricingPage, { template: tpl, onNavigate: go });
+    if (AUTH[s.page]) return h(AuthPage, { key: s.page, template: tpl, mode: s.page, email: s.email, onNavigate: go });
+    if (s.page === 'onboarding') return h(Onboarding, { template: tpl, onNavigate: go });
+    if (s.page === 'terms' || s.page === 'privacy') return h(ArticlePage, { key: s.page, template: tpl, kind: s.page, onNavigate: go });
+    if (MESSAGES[s.page]) return h(MessagePage, { key: s.page, template: tpl, kind: s.page, onNavigate: go });
+    if (s.page === 'app') return h(Workspace, { key: s.view || 'overview', template: tpl, view: s.view, onSignOut: function () { go('home'); }, onPlans: function () { go('pricing'); } });
+    return h(LandingPage, { template: tpl, onNavigate: go });
   }
 
   const CB = {
     Button: Button, SignupForm: SignupForm, StatusPill: StatusPill, StageBadge: StageBadge, LifecycleStepper: LifecycleStepper,
     KpiTile: KpiTile, MoneySummary: MoneySummary, ProfitChart: ProfitChart, OpportunityCard: OpportunityCard, PayablesTable: PayablesTable, DataTable: DataTable, ProgressBar: ProgressBar, Checklist: Checklist, ScheduleBoard: ScheduleBoard, TextField: TextField, ChipSelect: ChipSelect, PricingPage: PricingPage, AuthPage: AuthPage, Onboarding: Onboarding, Prototype: Prototype, Notice: Notice, EmptyState: EmptyState, Dialog: Dialog, Skeleton: Skeleton, MessagePage: MessagePage, ArticlePage: ArticlePage,
     Experiment: Experiment, LandingPage: LandingPage, Workspace: Workspace,
-    STAGES: STAGES, TEMPLATES: TEMPLATES, VIEWS: VIEWS, navId: navId, checklistProgress: checklistProgress, viewParent: viewParent, jobTotals: jobTotals, filterByStatus: filterByStatus, toggleChoice: toggleChoice, nextStep: nextStep, parseMoney: parseMoney, payRunTotal: payRunTotal, PAGES: PAGES, PLANS: PLANS, sample: sample,
+    STAGES: STAGES, TEMPLATES: TEMPLATES, VIEWS: VIEWS, navId: navId, checklistProgress: checklistProgress, viewParent: viewParent, jobTotals: jobTotals, filterByStatus: filterByStatus, toggleChoice: toggleChoice, nextStep: nextStep, parseMoney: parseMoney, payRunTotal: payRunTotal, viewForStage: viewForStage, PAGES: PAGES, PLANS: PLANS, sample: sample,
     assignVariant: assignVariant, hashString: hashString, formatMoney: formatMoney, formatPercent: formatPercent,
     profitMargin: profitMargin, stageIndex: stageIndex, cx: cx, track: track, setTracker: setTracker, setLinks: setLinks, modifiedClick: modifiedClick, useExperiment: useExperiment
   };
 
-export { Button, SignupForm, StatusPill, StageBadge, LifecycleStepper, KpiTile, MoneySummary, ProfitChart, OpportunityCard, PayablesTable, DataTable, ProgressBar, Checklist, ScheduleBoard, TextField, ChipSelect, PricingPage, AuthPage, Onboarding, Prototype, Notice, EmptyState, Dialog, Skeleton, MessagePage, ArticlePage, Experiment, LandingPage, Workspace, STAGES, TEMPLATES, VIEWS, navId, checklistProgress, viewParent, jobTotals, filterByStatus, toggleChoice, nextStep, parseMoney, payRunTotal, PAGES, PLANS, sample, assignVariant, hashString, formatMoney, formatPercent, profitMargin, stageIndex, cx, track, setTracker, setLinks, modifiedClick, useExperiment };
+export { Button, SignupForm, StatusPill, StageBadge, LifecycleStepper, KpiTile, MoneySummary, ProfitChart, OpportunityCard, PayablesTable, DataTable, ProgressBar, Checklist, ScheduleBoard, TextField, ChipSelect, PricingPage, AuthPage, Onboarding, Prototype, Notice, EmptyState, Dialog, Skeleton, MessagePage, ArticlePage, Experiment, LandingPage, Workspace, STAGES, TEMPLATES, VIEWS, navId, checklistProgress, viewParent, jobTotals, filterByStatus, toggleChoice, nextStep, parseMoney, payRunTotal, viewForStage, PAGES, PLANS, sample, assignVariant, hashString, formatMoney, formatPercent, profitMargin, stageIndex, cx, track, setTracker, setLinks, modifiedClick, useExperiment };
 export default CB;

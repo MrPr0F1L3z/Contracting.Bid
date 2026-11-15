@@ -5,12 +5,16 @@
   "description": "Contracting.Bid marketing site and customer workspace (Blueprint design). Front end only; sample data.",
   "scripts": {
     "dev": "next dev",
+    "dev:hivis": "NEXT_PUBLIC_CB_TEMPLATE=hivis next dev --port 3001",
     "build": "next build",
+    "build:hivis": "NEXT_PUBLIC_CB_TEMPLATE=hivis next build",
     "start": "next start",
+    "start:hivis": "NEXT_PUBLIC_CB_TEMPLATE=hivis next start --port 3001",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "check": "pnpm typecheck && pnpm test",
     "e2e": "playwright test",
+    "e2e:hivis": "NEXT_PUBLIC_CB_TEMPLATE=hivis PORT=3101 playwright test",
     "tokens": "node scripts/build-tokens.mjs",
     "design:import": "node scripts/import-design-bundle.mjs"
   },

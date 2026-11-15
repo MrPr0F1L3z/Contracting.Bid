@@ -48,3 +48,33 @@ describe('workspace screen', () => {
     expect(html).not.toMatch(/href="#/);
   });
 });
+
+describe('Hi-Vis', () => {
+  test('every site screen renders in Hi-Vis with real URLs', () => {
+    const screens = [
+      <HomeScreen key="h" template="hivis" />, <PricingScreen key="p" template="hivis" />, <OnboardingScreen key="o" template="hivis" />,
+      <AuthScreen key="a" mode="signup" template="hivis" />, <AuthScreen key="b" mode="signin" template="hivis" />,
+      <ArticleScreen key="c" kind="terms" template="hivis" />, <MessageScreen key="d" kind="not_found" template="hivis" />,
+    ];
+    for (const screen of screens) {
+      const html = renderToStaticMarkup(screen);
+      expect(html).toContain('data-template="hivis"');
+      expect(html).not.toContain('data-template="blueprint"');
+      expect(html).not.toMatch(/href="#/);
+    }
+  });
+
+  test.each([...WORKSPACE_VIEWS])('workspace %s renders in Hi-Vis with top navigation', (view) => {
+    const html = renderToStaticMarkup(<WorkspaceScreen view={view} template="hivis" />);
+    expect(html).toContain('data-template="hivis"');
+    expect(html).toContain(`data-view="${view}"`);
+    expect(html).toContain('cb-appnav-top');
+    expect(html.match(/aria-current="page"/g)).toHaveLength(1);
+    expect(html).not.toMatch(/href="#/);
+  });
+
+  test('screens default to the template the site was built with', () => {
+    expect(renderToStaticMarkup(<HomeScreen />)).toContain('data-template="blueprint"');
+    expect(renderToStaticMarkup(<WorkspaceScreen view="overview" />)).toContain('data-template="blueprint"');
+  });
+});
