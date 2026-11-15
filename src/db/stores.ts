@@ -112,6 +112,18 @@ export class PersistentEventLog implements EventLog {
   }
 }
 
+/** A run as `pnpm db delete` needs to see it. */
+export interface RunRow {
+  runId: string;
+  startedAt: Date;
+  outcome: string | null;
+  /** False while the run may still be going: it has no report and no outcome yet. */
+  finished: boolean;
+}
+interface RawRunRow { id: string; started_at: Date | string; outcome: string | null; finished: boolean }
+const RUN_ROW = "id, started_at, outcome, (report IS NOT NULL OR outcome IS NOT NULL) AS finished";
+const toRunRow = (x: RawRunRow): RunRow => ({ runId: x.id, startedAt: new Date(x.started_at), outcome: x.outcome, finished: Boolean(x.finished) });
+
 /** Runs, their events, agents and approvals in Postgres. */
 export class RunStore {
   constructor(private readonly db: Db) {}
@@ -202,6 +214,47 @@ export class RunStore {
       runId, seed: Number(row.seed), command: row.command, profile: row.profile, outcome: row.outcome, reason: row.reason, startedBy: row.started_by,
       agents: [], approvals: [], events: await this.events(runId),
     };
+  }
+
+  /** One run as `pnpm db delete` lists it, or null when there is no such run. */
+  async find(runId: string): Promise<RunRow | null> {
+    const r = await this.db.query<RawRunRow>(`SELECT ${RUN_ROW} FROM runs WHERE id = $1`, [runId]);
+    return r.rows[0] ? toRunRow(r.rows[0]) : null;
+  }
+
+  /** Every run that started before the cut-off, oldest first. */
+  async startedBefore(cutoff: Date): Promise<RunRow[]> {
+    const r = await this.db.query<RawRunRow>(`SELECT ${RUN_ROW} FROM runs WHERE started_at < $1 ORDER BY started_at, id`, [cutoff.toISOString()]);
+    return r.rows.map(toRunRow);
+  }
+
+  /**
+   * Deletes runs and everything recorded for them, in one transaction: all of
+   * it goes, or none of it does. Returns the ids that were deleted.
+   */
+  async deleteRuns(runIds: readonly string[]): Promise<string[]> {
+    if (runIds.length === 0) return [];
+    const ids = [...new Set(runIds)];
+    const mine = "(SELECT id FROM agents WHERE run_id = ANY($1::text[]))";
+    const vendors = "(SELECT id FROM vendors WHERE run_id = ANY($1::text[]))";
+    return this.db.transaction(async (tx) => {
+      // Children first; nothing in the schema cascades.
+      await tx.query(`DELETE FROM agent_config_history WHERE agent_id IN ${mine}`, [ids]);
+      await tx.query(`DELETE FROM invoices WHERE commitment_id IN (SELECT id FROM commitments WHERE vendor_id IN ${vendors})`, [ids]);
+      await tx.query(`DELETE FROM commitments WHERE vendor_id IN ${vendors}`, [ids]);
+      await tx.query(`DELETE FROM quotes WHERE vendor_id IN ${vendors}`, [ids]);
+      await tx.query("DELETE FROM vendors WHERE run_id = ANY($1::text[])", [ids]);
+      await tx.query("DELETE FROM tasks WHERE run_id = ANY($1::text[])", [ids]);
+      // Rows of other runs that point at these agents keep their row and lose the pointer.
+      await tx.query(`UPDATE tasks SET owner_id = NULL WHERE owner_id IN ${mine}`, [ids]);
+      await tx.query(`UPDATE tasks SET checked_out_by = NULL WHERE checked_out_by IN ${mine}`, [ids]);
+      await tx.query(`UPDATE agents SET manager_id = NULL WHERE manager_id IN ${mine} AND (run_id IS NULL OR NOT (run_id = ANY($1::text[])))`, [ids]);
+      await tx.query("DELETE FROM approvals WHERE run_id = ANY($1::text[])", [ids]);
+      await tx.query("DELETE FROM events WHERE run_id = ANY($1::text[])", [ids]);
+      await tx.query("DELETE FROM agents WHERE run_id = ANY($1::text[])", [ids]);
+      const gone = await tx.query<{ id: string }>("DELETE FROM runs WHERE id = ANY($1::text[]) RETURNING id", [ids]);
+      return gone.rows.map((x) => x.id).sort();
+    });
   }
 
   async events(runId: string): Promise<LoggedEvent[]> {

@@ -169,6 +169,10 @@ With `DATABASE_URL` set, every `hiring`, `bid`, `job` and `closeout` run is save
 - New migrations in `db/migrations/` are applied automatically when a run starts (and by the `migrate` service on `docker compose up`). They are applied together in one transaction: if any fails, none are, the database is left as it was, and the run does not start. CI applies them to a fresh Postgres on every pull request.
 - `pnpm db migrate` applies them without starting a run. `pnpm db status` shows which are applied.
 - `pnpm db export RUN_ID` writes one run's report to `runs/RUN_ID.json`, to share it. The dashboard's Past runs tab shows the run IDs.
+- `pnpm db delete` removes saved runs with their events, approvals and agents. It only lists what it would remove until you add `--yes`, and it cannot be undone, so export a run first if you want a copy.
+  - `pnpm db delete RUN_ID` removes one run.
+  - `pnpm db delete --before now` removes every run so far. `--before 14:30:00` means that time today, `--before 261115` (or `2026-11-15`) the start of that day, and `--before 261115 14:30:00` that day at that time. Times are this machine's local time.
+  - Runs that have not finished are left alone unless you add `--include-unfinished`.
 - `pnpm db import` copies your existing `runs/*.json` reports and `data/dashboard-users.json` logins into the database. It skips anything already there, so it is safe to run twice.
 
 The sim runs on this machine, so `DATABASE_URL` uses `localhost`, not the container name `db`. Postgres only listens on 127.0.0.1. Remove `DATABASE_URL` to run without a database; reports are then written to `runs/` as before.
