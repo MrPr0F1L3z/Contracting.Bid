@@ -705,7 +705,7 @@ test('the home page says the work is automated and the owner approves, in Bluepr
   }
   assert.match(html(h(CB.LandingPage, { template: 'blueprint' })), /<h1 class="cb-display">AI runs the office work\. You run the company\.<\/h1>/);
   assert.match(html(h(CB.LandingPage, { template: 'hivis' })), /AI does the office work, from the first bid alert/);
-  assert.match(html(h(CB.LandingPage, { template: 'hivis' })), /<h1 class="cb-display">Find it\. Bid it\.<br\/>Fulfill it\. <em>Get paid\.<\/em><\/h1>/);
+  assert.match(html(h(CB.LandingPage, { template: 'hivis' })), /<h1 class="cb-display">Find it\. Bid it\.<br\/>Provide it\. <em>Get paid\.<\/em><\/h1>/);
 });
 
 test('the automation section makes no numeric promises', () => {
