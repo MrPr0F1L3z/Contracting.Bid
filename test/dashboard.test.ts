@@ -4,7 +4,7 @@ import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DashboardServer, parseDecision, summarize } from "../src/dashboard/server.js";
+import { DashboardServer, WORKSPACE_LIVE_RUNS, isJobEvent, parseDecision, summarize } from "../src/dashboard/server.js";
 import { RunLauncher } from "../src/dashboard/launcher.js";
 import { DASHBOARD_HTML } from "../src/dashboard/page.js";
 import { MAX_FAILURES, MemoryUserStore, newUser, totpCode, type DashboardUser } from "../src/dashboard/auth.js";
@@ -102,6 +102,56 @@ describe("DashboardServer without HTTP", () => {
       .rejects.toThrow("will not serve plain HTTP on 0.0.0.0");
     await expect(new DashboardServer({ runsDir: "x", users: new MemoryUserStore(), port: 0 }).start())
       .rejects.toThrow("No dashboard logins exist yet");
+  });
+});
+
+describe("isJobEvent", () => {
+  it("drops model and tool chatter and keeps everything else", () => {
+    for (const type of ["model_call", "tool_call", "tool_result", "task_finished"]) expect(isJobEvent({ type })).toBe(false);
+    for (const type of ["bid_submitted", "approval_requested", "run_finished", "something_new"]) expect(isJobEvent({ type })).toBe(true);
+  });
+});
+
+describe("DashboardServer workspace view", () => {
+  const e = (runId: string, type: string, payload: Record<string, unknown> = {}) => ({ runId, simTime: 0, type, actor: "world", payload });
+  it("shows a run as a job while it is going, without the chatter", async () => {
+    const d = new DashboardServer({ runsDir: "nowhere", users: new MemoryUserStore() });
+    const log = d.tee();
+    expect(await d.workspace()).toEqual({ jobs: [], stats: expect.objectContaining({ urgent: 0, awardedJobs: 0 }) });
+    log.append(e("r1", "opportunity_found", { noticeId: "STUB-E02", title: "Paint" }));
+    for (let i = 0; i < 600; i++) log.append(e("r1", "tool_call", { i }));
+    log.append(e("r1", "bid_submitted", { priceUsd: 100 }));
+    log.append(e("r1", "approval_requested", { approvalId: 1, gate: "sign_contract", summary: "Sign" }));
+    const w = await d.workspace();
+    expect(w.jobs).toHaveLength(1);
+    expect(w.jobs[0]).toMatchObject({ runId: "r1", noticeId: "STUB-E02", stage: "award", bidUsd: 100, agency: expect.any(String) });
+    expect(w.jobs[0]!.tasks.map((t) => t.gate)).toEqual(["sign_contract"]);
+    expect(w.stats).toMatchObject({ bidsAwaiting: 1, bidsAwaitingUsd: 100, urgent: 1 });
+    d.clearLive();
+    expect((await d.workspace()).jobs).toHaveLength(1);
+  });
+  it("keeps only the latest runs in memory", async () => {
+    const d = new DashboardServer({ runsDir: "nowhere", users: new MemoryUserStore() });
+    const log = d.tee();
+    for (let i = 0; i < WORKSPACE_LIVE_RUNS + 2; i++) log.append(e(`r${i}`, "bid_submitted", { priceUsd: 1 }));
+    const ids = (await d.workspace()).jobs.map((j) => j.runId);
+    expect(ids).toHaveLength(WORKSPACE_LIVE_RUNS);
+    expect(ids[0]).toBe("r2");
+  });
+  it("adds saved runs, preferring the live copy of a run in both", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "dash-"));
+    try {
+      await writeFile(join(dir, "old.json"), JSON.stringify({ runId: "old", events: [{ ...e("old", "contract_signed", { priceUsd: 50, contractDays: 5 }), seq: 1 }, { ...e("other", "bid_submitted", { priceUsd: 9 }), seq: 2 }, null, { ...e("old", "tool_call"), seq: 3 }] }));
+      await writeFile(join(dir, "both.json"), JSON.stringify({ runId: "both", events: [{ ...e("both", "bid_submitted", { priceUsd: 1 }), seq: 1 }] }));
+      await writeFile(join(dir, "bare.json"), JSON.stringify({ runId: "bare" }));
+      const d = new DashboardServer({ runsDir: dir, users: new MemoryUserStore() });
+      d.tee().append(e("both", "bid_submitted", { priceUsd: 2 }));
+      const w = await d.workspace();
+      expect(w.jobs.map((j) => [j.runId, j.bidUsd, j.contractUsd])).toEqual([["both", 2, null], ["old", null, 50]]);
+      expect(w.stats).toMatchObject({ bidsAwaiting: 1, awardedJobs: 1 });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });
 
@@ -275,6 +325,15 @@ describe("DashboardServer over HTTP (functional)", () => {
     expect(await post({ "x-csrf-token": "wrong" })).toMatchObject({ status: 403, body: { error: "Missing or wrong CSRF token" } });
     expect(d.pendingRequests()).toHaveLength(1);
     expect(await post({ origin: base })).toMatchObject({ status: 200 });
+  });
+
+  it("serves the workspace view to a signed-in user only", async () => {
+    expect((await client(base).call("/api/workspace")).status).toBe(401);
+    const c = await signedIn();
+    d.tee().append({ runId: "live", simTime: 0, type: "bid_submitted", actor: "pm#3", payload: { priceUsd: 70 } });
+    const r = await c.call("/api/workspace");
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({ jobs: [{ runId: "live", bidUsd: 70, stage: "award" }], stats: { bidsAwaiting: 1 } });
   });
 
   it("lists and reads saved runs once signed in", async () => {

@@ -7,6 +7,8 @@ import type { ApprovalRequest } from "../approvals/approvals.js";
 import type { ApprovalDecision, Approver } from "../agents/hiringTools.js";
 import { InMemoryEventLog, type EventInput, type EventLog, type LoggedEvent } from "../events/eventLog.js";
 import { DASHBOARD_HTML } from "./page.js";
+import { projectJobs, workspaceStats, type WorkspaceJob, type WorkspaceStats } from "../workspace/projection.js";
+import { STUB_OPPORTUNITIES } from "../opportunities/stub.js";
 import { fontFile } from "./fonts.js";
 import type { RunLauncher } from "./launcher.js";
 import { LoginLimiter, SessionStore, hashPassword, readCookie, verifyPassword, verifyTotp, type Session, type UserStore } from "./auth.js";
@@ -103,6 +105,18 @@ export function summarize(file: string, report: Record<string, unknown>): RunSum
   };
 }
 
+/** Model and tool chatter: logged, but not part of what happened to the job. */
+const CHATTER = new Set(["model_call", "tool_call", "tool_result", "task_finished"]);
+/** How many runs' job events the server keeps in memory for the workspace view. */
+export const WORKSPACE_LIVE_RUNS = 50;
+/** How many saved runs the workspace view reads besides the live ones. */
+export const WORKSPACE_SAVED_RUNS = 20;
+
+/** True for an event that changes what the workspace shows. */
+export function isJobEvent(e: Pick<LoggedEvent, "type">): boolean {
+  return !CHATTER.has(e.type);
+}
+
 /**
  * The owner dashboard: a web page for answering approvals while a
  * simulation runs, watching its events live, and reading saved reports.
@@ -118,6 +132,8 @@ export class DashboardServer {
   private readonly decided: Array<{ request: DashboardRequest; decision: ApprovalDecision }> = [];
   private readonly streams = new Map<ServerResponse, string>();
   private readonly recent: LoggedEvent[] = [];
+  /** Job events of the latest runs, by run, kept whole so the workspace view never loses a step. */
+  private readonly jobEvents = new Map<string, LoggedEvent[]>();
   private readonly now: () => number;
   readonly sessions: SessionStore;
   readonly limiter: LoginLimiter;
@@ -170,11 +186,38 @@ export class DashboardServer {
         const logged = log.append(event);
         this.recent.push(logged);
         if (this.recent.length > 500) this.recent.shift();
+        this.keepJobEvent(logged);
         this.broadcast("event", logged);
         return logged;
       },
       list: (filter) => log.list(filter),
     };
+  }
+
+  private keepJobEvent(e: LoggedEvent): void {
+    if (!isJobEvent(e)) return;
+    let run = this.jobEvents.get(e.runId);
+    if (!run) {
+      this.jobEvents.set(e.runId, (run = []));
+      // A Map keeps insertion order, so the first key is the oldest run.
+      if (this.jobEvents.size > WORKSPACE_LIVE_RUNS) this.jobEvents.delete(this.jobEvents.keys().next().value as string);
+    }
+    run.push(e);
+  }
+
+  /**
+   * Every job the customer workspace should show: runs going now, from their
+   * events so far, then the latest saved runs. A run in both is taken live.
+   */
+  async workspace(): Promise<{ jobs: WorkspaceJob[]; stats: WorkspaceStats }> {
+    const events = [...this.jobEvents.values()].flat();
+    for (const run of (await this.listRuns()).slice(0, WORKSPACE_SAVED_RUNS)) {
+      if (this.jobEvents.has(run.runId)) continue;
+      const saved = (await this.readRun(run.file))?.events;
+      if (Array.isArray(saved)) events.push(...(saved as LoggedEvent[]).filter((e) => e !== null && typeof e === "object" && e.runId === run.runId && isJobEvent(e)));
+    }
+    const jobs = projectJobs(events, STUB_OPPORTUNITIES);
+    return { jobs, stats: workspaceStats(jobs) };
   }
 
   pendingRequests(): DashboardRequest[] {
@@ -393,6 +436,7 @@ export class DashboardServer {
       return this.send(res, 200, { pending: this.pendingRequests(), decided: this.decided, events: this.recent });
     }
     if (req.method === "GET" && url.pathname === "/api/runs") return this.send(res, 200, await this.listRuns());
+    if (req.method === "GET" && url.pathname === "/api/workspace") return this.send(res, 200, await this.workspace());
     if (url.pathname === "/api/launch") {
       const launcher = this.o.launcher;
       if (!launcher) return this.send(res, 404, { error: "This dashboard cannot start runs. Start it with: pnpm sim serve" });
