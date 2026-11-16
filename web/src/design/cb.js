@@ -335,13 +335,36 @@ import * as React from 'react';
   function ProofTrio() {
     var totals = { revenue: sample.revenue, expense: sample.expense };
     return section('proof', 'cb-trio', [
-          h('div', { key: 'a' }, h('h2', null, 'Win more'), h('p', null, 'Projects matched to your trades and bonding limit, with the requirements already read.'),
+          h('div', { key: 'a' }, h('h2', null, 'Win more'), h('p', null, 'AI finds the projects that fit, reads every page of the documents and drafts the bid. More bids go out without adding an estimator.'),
             h(OpportunityCard, projectById('p1'))),
-          h('div', { key: 'b' }, h('h2', null, 'Run tighter'), h('p', null, 'Every job shows where it stands and what is holding it up.'),
+          h('div', { key: 'b' }, h('h2', null, 'Run leaner'), h('p', null, 'Sub quotes, schedules, pay applications and closeout paperwork are prepared for you. Your office reviews work instead of producing it.'),
             h('div', { className: 'cb-card' }, h('div', { className: 'cb-card-h' }, 'Lincoln Elementary HVAC retrofit'), h(LifecycleStepper, { current: 'schedule', compact: true }))),
-          h('div', { key: 'c' }, h('h2', null, 'Keep more'), h('p', null, 'Revenue, cost and margin per job and across the company, as it happens.'),
+          h('div', { key: 'c' }, h('h2', null, 'Keep more'), h('p', null, 'Lower overhead on every job and fewer missed deadlines leave more of each contract with you. Revenue, cost and margin are always current.'),
             h('div', { className: 'cb-card' }, h(MoneySummary, totals)))
         ]);
+  }
+
+  // What the product automates, and the decisions that stay with the owner. The second list is the
+  // set of approvals nothing proceeds without.
+  var AI_DOES = [
+    'Finds open projects and scores each against your trades, location and bonding limit',
+    'Reads the plans, specs and addenda and lists what they require',
+    'Builds the estimate, requests sub quotes and assembles the bid',
+    'Drafts subcontracts, schedules, pay applications and change orders',
+    'Chases insurance, lien waivers and warranties, and flags what is late',
+    'Tracks revenue, cost and margin on every job as it happens'
+  ];
+  var YOU_DECIDE = ['Which projects to pursue', 'The price of every bid', 'Signing contracts and subcontracts', 'Change orders', 'Releasing payments', 'Closing out a job'];
+  function AutomationSplit() {
+    return section('automation', 'cb-auto', [
+      h('div', { key: 'h', className: 'cb-auto-head' },
+        h('h2', { className: 'cb-display-lg' }, 'AI does the work. You keep the decisions.'),
+        h('p', { className: 'cb-lead' }, 'Contracting.Bid automates as much of the job as it can, from the first search to the final payment, so the same company can take on more work with a smaller office. Your part is oversight and direction: nothing is bid, signed or paid without your approval.')),
+      h('div', { key: 'a', className: 'cb-auto-col', 'data-col': 'ai' }, h('h3', { className: 'cb-label' }, 'Done for you'),
+        h('ul', { className: 'cb-auto-list' }, AI_DOES.map(function (t) { return h('li', { key: t }, t); }))),
+      h('div', { key: 'y', className: 'cb-auto-col cb-auto-you', 'data-col': 'you' }, h('h3', { className: 'cb-label' }, 'Decided by you'),
+        h('ul', { className: 'cb-auto-list' }, YOU_DECIDE.map(function (t) { return h('li', { key: t }, t); })))
+    ]);
   }
 
   function LandingPage(p) {
@@ -352,12 +375,13 @@ import * as React from 'react';
         h('div', { key: 'top', className: 'cb-band-shell' },
           h(MarketingNav, { onShell: true, go: p.onNavigate, current: 'home' }),
           section('hero', 'cb-hero cb-hero-poster', [
-            h('h1', { key: 'h', className: 'cb-display' }, 'Find it. Bid it.', h('br'), 'Build it. ', h('em', null, 'Get paid.')),
-            h('p', { key: 'p', className: 'cb-lead' }, 'One platform from the first bid alert to the final lien waiver. Your subs, your schedule and your money stay on the same job.'),
+            h('h1', { key: 'h', className: 'cb-display' }, 'Find it. Bid it.', h('br'), 'Provide it. ', h('em', null, 'Get paid.')),
+            h('p', { key: 'p', className: 'cb-lead' }, 'AI does the office work, from the first bid alert to the final lien waiver. You approve the decisions that matter. More jobs, a leaner office, more of every contract kept.'),
             h(SignupForm, { key: 'f', onShell: true, ctaVariant: 'accent', trackId: 'hero_signup', onSubmit: function (email) { if (p.onNavigate) p.onNavigate('signup', email); } })
           ]),
           h(StageGrid, { key: 'g', onShell: true })),
         h(ProofTrio, { key: 'proof' }),
+        h(AutomationSplit, { key: 'auto' }),
         section('cta', 'cb-cta-band', [h('h2', { key: 'h', className: 'cb-display-lg' }, 'Put your next bid through it.'), h(Button, { key: 'b', variant: 'primary', size: 'lg', trackId: 'footer_signup', onClick: function () { if (p.onNavigate) p.onNavigate('signup'); } }, 'Start free trial')]),
         h(SiteFooter, { key: 'f', go: p.onNavigate })
       ]);
@@ -393,9 +417,9 @@ import * as React from 'react';
       h(MarketingNav, { key: 'n', go: p.onNavigate, current: 'home' }),
       section('hero', 'cb-hero cb-hero-split', [
         h('div', { key: 'l' },
-          h('p', { className: 'cb-eyebrow' }, 'Bid-to-closeout platform for contractors'),
-          h('h1', { className: 'cb-display' }, 'Every bid, sub and dollar on one sheet.'),
-          h('p', { className: 'cb-lead' }, 'Contracting.Bid finds the projects that fit your crew, builds the bid, then runs the job through subcontractors, scheduling, billing and closeout, with profit visible at every step.'),
+          h('p', { className: 'cb-eyebrow' }, 'AI-run back office for contractors'),
+          h('h1', { className: 'cb-display' }, 'AI runs the office work. You run the company.'),
+          h('p', { className: 'cb-lead' }, 'Contracting.Bid uses AI to find the projects that fit, build the bid, and run the job through subcontractors, scheduling, billing and closeout. You approve the decisions that matter. More work goes out with fewer people in the office, and profit is visible at every step.'),
           h(SignupForm, { trackId: 'hero_signup', onSubmit: function (email) { if (p.onNavigate) p.onNavigate('signup', email); } })),
         h('div', { key: 'r', className: 'cb-hero-panel', 'aria-label': 'Product preview' },
           h('div', { className: 'cb-card-h' }, 'Lincoln Elementary HVAC retrofit', sampleTag()),
@@ -407,6 +431,7 @@ import * as React from 'react';
       ]),
       h('div', { key: 'stages', className: 'cb-band-shell', 'data-section': 'lifecycle' }, h(StageGrid, { onShell: true })),
       h(ProofTrio, { key: 'proof' }),
+      h(AutomationSplit, { key: 'auto' }),
       section('cta', 'cb-cta-band', [h('h2', { key: 'h', className: 'cb-display-lg' }, 'Run your whole job from one place.'), h(Button, { key: 'b', variant: 'accent', size: 'lg', trackId: 'footer_signup', onClick: function () { if (p.onNavigate) p.onNavigate('signup'); } }, 'Start free trial')]),
       h(SiteFooter, { key: 'f', go: p.onNavigate })
     ]);
@@ -1404,7 +1429,7 @@ import * as React from 'react';
             : inn ? h('p', { className: 'cb-meta' }, h('a', { href: pageHref('reset'), 'data-track': 'forgot_password', onClick: nav(p, 'reset') }, 'Forgot your password?'), ' · New here? ', h('a', { href: pageHref('signup'), onClick: nav(p, 'signup') }, 'Start a free trial'))
             : h('p', { className: 'cb-meta' }, h('a', { href: pageHref('signin'), onClick: nav(p, 'signin') }, 'Back to sign in')))),
       h('aside', { className: 'cb-auth-side cb-band-shell' },
-        h('h2', { className: 'cb-display-lg' }, up ? 'Three steps to your first matched project.' : 'Every bid, sub and dollar on one sheet.'),
+        h('h2', { className: 'cb-display-lg' }, up ? 'Three steps to your first matched project.' : 'AI runs the office work. You run the company.'),
         up ? h('ol', { className: 'cb-auth-steps' },
           h('li', null, h('strong', null, 'Tell us what you build.'), ' Trades, service area and the largest job you can bond.'),
           h('li', null, h('strong', null, 'See what fits.'), ' Open projects ranked by how well they match.'),

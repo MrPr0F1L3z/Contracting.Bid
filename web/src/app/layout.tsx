@@ -15,9 +15,9 @@ import { TEMPLATE } from '@/lib/template';
 import { Analytics } from '@/screens/Analytics';
 
 export const metadata: Metadata = {
-  title: { default: 'Contracting.Bid: every bid, sub and dollar on one sheet', template: '%s · Contracting.Bid' },
+  title: { default: 'Contracting.Bid: AI runs the office work, you run the company', template: '%s · Contracting.Bid' },
   description:
-    'Contracting.Bid finds the projects that fit your crew, builds the bid, then runs the job through subcontractors, scheduling, billing and closeout. Free for 7 days. No credit card needed.',
+    'Contracting.Bid uses AI to find projects, build bids and run each job through subcontractors, scheduling, billing and closeout, while you approve the decisions that matter. Free for 7 days. No credit card needed.',
 };
 
 export const viewport: Viewport = { width: 'device-width', initialScale: 1 };

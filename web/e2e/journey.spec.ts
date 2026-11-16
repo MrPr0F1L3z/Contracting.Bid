@@ -10,7 +10,9 @@ async function events(page: Page): Promise<string[]> {
 test('sign up from the home page, set up, import a bid and submit it', async ({ page }) => {
   await page.goto('/');
   // Blueprint's headline or Hi-Vis's, whichever template was built.
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText(/Every bid, sub and dollar on one sheet\.|Find it\. Bid it\./);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(/AI runs the office work\. You run the company\.|Find it\. Bid it\./);
+  await expect(page.getByRole('heading', { name: 'AI does the work. You keep the decisions.' })).toBeVisible();
+  await expect(page.getByText('nothing is bid, signed or paid without your approval')).toBeVisible();
   await expect(page.locator('html')).toHaveAttribute('data-theme', TEMPLATE);
 
   await page.getByLabel('Work email').fill('sam@example.com');

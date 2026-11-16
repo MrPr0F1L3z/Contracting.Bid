@@ -19,6 +19,8 @@ describe('site screens', () => {
     expect(html).toContain('href="/terms"');
     expect(html).not.toMatch(/href="#/);
     expect(html).toContain('Free for 7 days. No credit card needed.');
+    expect(html).toContain('AI runs the office work. You run the company.');
+    expect(html).toContain('data-section="automation"');
   });
 
   test('pricing, onboarding and articles render their page', () => {

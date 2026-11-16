@@ -691,6 +691,30 @@ test('Prototype carries its template to every page', () => {
   assert.match(html(h(CB.Prototype, { start: 'app' })), /data-template="blueprint"/);
 });
 
+test('the home page says the work is automated and the owner approves, in Blueprint and Hi-Vis', () => {
+  for (const template of ['blueprint', 'hivis']) {
+    const out = html(h(CB.LandingPage, { template }));
+    assert.match(out, /data-section="automation"/, template);
+    assert.match(out, /AI does the work\. You keep the decisions\./, template);
+    assert.match(out, /nothing is bid, signed or paid without your approval/, template);
+    assert.match(out, /data-col="ai".*data-col="you"/s, template);
+    assert.ok(out.indexOf('data-section="proof"') < out.indexOf('data-section="automation"'), template);
+    assert.ok(out.indexOf('data-section="automation"') < out.indexOf('data-section="cta"'), template);
+    const auto = /data-section="automation"[\s\S]*?<\/section>/.exec(out)[0];
+    assert.equal((auto.match(/<li>/g) || []).length, 12, template);
+  }
+  assert.match(html(h(CB.LandingPage, { template: 'blueprint' })), /<h1 class="cb-display">AI runs the office work\. You run the company\.<\/h1>/);
+  assert.match(html(h(CB.LandingPage, { template: 'hivis' })), /AI does the office work, from the first bid alert/);
+  assert.match(html(h(CB.LandingPage, { template: 'hivis' })), /<h1 class="cb-display">Find it\. Bid it\.<br\/>Fulfill it\. <em>Get paid\.<\/em><\/h1>/);
+});
+
+test('the automation section makes no numeric promises', () => {
+  for (const template of ['blueprint', 'hivis']) {
+    const auto = /data-section="automation"[\s\S]*?<\/section>/.exec(html(h(CB.LandingPage, { template })))[0];
+    assert.doesNotMatch(auto, /\d+\s?%|\dx\b|\$\d/, template);
+  }
+});
+
 test('signup note states the 7-day trial', () => {
   assert.match(html(h(CB.SignupForm, {})), /Free for 7 days\. No credit card needed\./);
 });
@@ -712,7 +736,7 @@ test('Blueprint landing: stage row, then the proof trio, no stage grid heading',
   assert.ok(out.indexOf('data-section="lifecycle"') < out.indexOf('data-section="proof"'));
   assert.equal((out.match(/cb-stagegrid-n/g) || []).length, 9);
   assert.doesNotMatch(out, /Nine stages/);
-  assert.match(out, /Win more.*Run tighter.*Keep more/s);
+  assert.match(out, /Win more.*Run leaner.*Keep more/s);
 });
 
 test('templates fall back to blueprint for an unknown name', () => {

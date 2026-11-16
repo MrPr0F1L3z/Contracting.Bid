@@ -516,3 +516,15 @@ textarea.cb-input { height: auto !important; padding: var(--space-3) var(--space
 .cb-group-rest { margin-top: var(--space-4) !important; padding-top: var(--space-4) !important; border-top: 1px solid var(--line-strong); }
 .cb-award-source { margin-left: var(--space-2); font-size: 12px; line-height: 20px; font-weight: 600; padding: 0 var(--space-2); border-radius: var(--radius-pill); background: var(--surface-sunk); color: var(--ink); white-space: nowrap; }
 .cb-award-line .cb-num { white-space: nowrap; }
+
+/* Home page: what is automated, and what the owner still decides. */
+.cb-auto { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: var(--space-8) var(--space-12); background: var(--surface); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.cb-auto-head { grid-column: 1 / -1; display: grid; gap: var(--space-4); max-width: 880px; }
+.cb-auto-col { display: grid; gap: var(--space-3); align-content: start; min-width: 0; grid-template-columns: minmax(0, 1fr); }
+.cb-auto-list li { position: relative; padding: var(--space-3) 0 var(--space-3) var(--space-8); border-top: 1px solid var(--line); font-size: 16px; line-height: 24px; }
+.cb-auto-list li::before { content: ""; position: absolute; left: 4px; top: 18px; width: 12px; height: 6px; border-left: 2px solid var(--success); border-bottom: 2px solid var(--success); transform: rotate(-45deg); }
+.cb-auto-you { background: var(--shell); color: var(--on-shell); border-radius: var(--cb-r); padding: var(--space-6); }
+.cb-auto-you .cb-label { color: var(--on-shell-muted); }
+.cb-auto-you .cb-auto-list li { border-top-color: var(--shell-raised); padding-left: var(--space-6); font-weight: 600; }
+.cb-auto-you .cb-auto-list li::before { left: 0; top: 20px; width: 8px; height: 8px; border: 0; transform: none; background: var(--accent); }
+@media (max-width: 820px) { .cb-auto { grid-template-columns: minmax(0, 1fr); } }
