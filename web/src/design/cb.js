@@ -239,7 +239,8 @@ import * as React from 'react';
         p.match != null ? h(StatusPill, { tone: 'info' }, p.match + '% match') : null,
         p.flag ? h(StatusPill, { tone: p.flagTone || 'warning' }, p.flag) : null),
       h('h3', { className: 'cb-opp-title' }, p.title),
-      h('p', { className: 'cb-opp-owner' }, p.owner),
+      h('p', { className: 'cb-opp-owner' }, p.owner, p.source ? h('span', { className: 'cb-opp-source' }, ' · ' + p.source) : null),
+      p.fit && !p.fit.ideal && p.fit.reasons && p.fit.reasons.length ? h('ul', { className: 'cb-opp-reasons', 'aria-label': 'Why this is not a best fit' }, p.fit.reasons.map(function (r) { return h('li', { key: r }, r); })) : null,
       h('div', { className: 'cb-opp-foot' },
         h('span', { className: 'cb-num' }, formatMoney(p.value)),
         p.due ? h('span', { className: 'cb-opp-due' }, p.due) : null),
@@ -539,11 +540,19 @@ import * as React from 'react';
           h('p', { className: 'cb-award-line' },
             h('button', { type: 'button', className: 'cb-award-name', 'aria-expanded': on, 'aria-controls': panel, 'data-track': 'award_' + a.id, onClick: function () { toggle(a.id); } }, a.contractor),
             ' awarded ', h('span', { className: 'cb-num' }, formatMoney(a.amount)), ' starting ' + formatYearMonth(a.start) + ' through ' + formatYearMonth(a.end),
-            months ? h('span', { className: 'cb-num' }, ' [' + months + ' mos.]') : null),
+            months ? h('span', { className: 'cb-num' }, ' [' + months + ' mos.]') : null,
+            a.source ? h('span', { className: 'cb-award-source' }, a.source) : null),
           h('div', { id: panel, className: 'cb-award-more', 'aria-hidden': !on }, h('div', { className: 'cb-award-inner' },
             h('dl', { className: 'cb-figures' }, facts.map(function (f) { return h('div', { key: f[0] }, h('dt', null, f[0]), h('dd', null, String(f[1]))); })))));
       })),
-      h('p', { className: 'cb-meta' }, p.source || 'Source: USAspending.gov, which lists federal awards. Sample rows; the live feed is not connected yet.'));
+      p.note === '' ? null : h('p', { className: 'cb-meta' }, p.note || 'Sample rows. Each award names the source it came from; the live feeds are not connected yet.'));
+  }
+
+  // Pure: best fits and the rest, each in the order given. A listing with no fit recorded counts as a best fit.
+  function splitByFit(list) {
+    var out = { ideal: [], rest: [] };
+    (list || []).forEach(function (x) { (x && x.fit && x.fit.ideal === false ? out.rest : out.ideal).push(x); });
+    return out;
   }
 
   function ProgressBar(p) {
@@ -637,15 +646,42 @@ import * as React from 'react';
       { label: 'Site access', detail: 'Background checks for every worker on site.', pill: 'Lead time', tone: 'warning' },
       { label: 'Insurance', detail: 'Meets your current policy.', pill: 'Fits', tone: 'success' }] }
   ];
-  sample.leads[0].awards = [
-    { id: 'a1', contractor: 'Cascade Paving & Grading', amount: 512400, start: '2023-04', end: '2023-09', contract: 'ART-23-0117, Transit yard paving, phase 1', agency: 'Alder Regional Transit', scope: 'Mill and overlay of the north lot, 71,000 sq ft, with striping.', offers: '5', changes: '2 change orders, final value $538,900' },
-    { id: 'a2', contractor: 'Hollis Asphalt Co.', amount: 298000, start: '2017-05', end: '2017-08', contract: 'ART-17-0042, Bus yard resurfacing', agency: 'Alder Regional Transit', scope: 'Overlay of drive lanes and replacement of two catch basins.', offers: '3', changes: 'None' }
+  var LOCAL_FEED = 'State and local feed';
+  // What each listing needs for matching, keyed by id. `fit` is what the ranking gives for the sample
+  // settings (HVAC, Paving, Roofing, General building; 50 miles of 40.0, -105.0; $750,000 bonding).
+  var LISTING_FACTS = {
+    p1: { trade: 'Paving', level: 'local', place: { lat: 40.174, lon: -105.0 }, miles: 12, source: LOCAL_FEED, fit: { ideal: true, reasons: [] } },
+    p2: { trade: 'General building', level: 'local', place: { lat: 40.058, lon: -105.0 }, miles: 4, source: LOCAL_FEED, fit: { ideal: true, reasons: [] } },
+    l3: { trade: 'HVAC', level: 'local', place: { lat: 40.13, lon: -105.0 }, miles: 9, source: LOCAL_FEED, fit: { ideal: true, reasons: [] } },
+    l4: { trade: 'Fencing', level: 'local', place: { lat: 40.449, lon: -105.0 }, miles: 31, source: LOCAL_FEED, fit: { ideal: false, reasons: ['Fencing is not one of your trades'] } }
+  };
+  sample.leads.forEach(function (l) { var f = LISTING_FACTS[l.id]; for (var k in f) l[k] = f[k]; });
+  sample.leads.push(
+    { id: 'l5', title: 'VA outpatient clinic HVAC controls upgrade', owner: 'Department of Veterans Affairs', value: 410000, stage: 'find', match: 81, due: 'Offers due Dec 9',
+      trade: 'HVAC', level: 'federal', place: { lat: 40.319, lon: -105.0 }, miles: 22, source: 'SAM.gov', fit: { ideal: true, reasons: [] },
+      summary: 'Replace building automation controllers and rebalance air handling for a 38,000 sq ft outpatient clinic that stays open.', requirements: [
+        { label: 'Set-aside', detail: 'Total small business.', pill: 'Check', tone: 'warning' },
+        { label: 'Wage rates', detail: 'Davis-Bacon rates apply; certified payroll weekly.', pill: 'Required', tone: 'neutral' },
+        { label: 'Site visit', detail: 'Dec 2, 10:00 am. One visit only.', pill: 'Attend', tone: 'warning' }],
+      awards: [{ id: 'a5', contractor: 'Ridgeline Controls LLC', amount: 268000, start: '2019-03', end: '2019-11', contract: '36C25919C0042, Clinic controls replacement, phase 1', agency: 'Department of Veterans Affairs', scope: 'Controllers and sensors for the east wing air handlers.', offers: '3', changes: '1 modification, final value $281,400', source: 'USAspending.gov' }] },
+    { id: 'l6', title: 'Regional airport terminal reroof', owner: 'Tri-County Airport Authority', value: 1240000, stage: 'find', match: 58, due: 'Bids due Dec 18',
+      trade: 'Roofing', level: 'local', place: { lat: 42.029, lon: -105.0 }, miles: 140, source: LOCAL_FEED, fit: { ideal: false, reasons: ['140 miles away, past your 50', 'Over your $750,000 bonding limit'] },
+      summary: 'Tear off and replace 96,000 sq ft of terminal roof in four phases, working around flight operations.', requirements: [
+        { label: 'Bonding capacity', detail: '$1,240,000 is over your $750,000 single-job limit.', pill: 'Over limit', tone: 'danger' },
+        { label: 'Airside badging', detail: 'Every worker needs an airport security badge.', pill: 'Lead time', tone: 'warning' }] }
+  );
+  // Best fits first, then the rest; inside each group the stronger match leads.
+  sample.leads.sort(function (a, b) { return (a.fit.ideal === b.fit.ideal ? 0 : a.fit.ideal ? -1 : 1) || b.match - a.match; });
+  function leadById(id) { return sample.leads.filter(function (l) { return l.id === id; })[0]; }
+  leadById('p1').awards = [
+    { id: 'a1', source: LOCAL_FEED, contractor: 'Cascade Paving & Grading', amount: 512400, start: '2023-04', end: '2023-09', contract: 'ART-23-0117, Transit yard paving, phase 1', agency: 'Alder Regional Transit', scope: 'Mill and overlay of the north lot, 71,000 sq ft, with striping.', offers: '5', changes: '2 change orders, final value $538,900' },
+    { id: 'a2', source: LOCAL_FEED, contractor: 'Hollis Asphalt Co.', amount: 298000, start: '2017-05', end: '2017-08', contract: 'ART-17-0042, Bus yard resurfacing', agency: 'Alder Regional Transit', scope: 'Overlay of drive lanes and replacement of two catch basins.', offers: '3', changes: 'None' }
   ];
-  sample.leads[1].awards = [
-    { id: 'a3', contractor: 'Marlow Builders', amount: 131500, start: '2021-06', end: '2021-10', contract: 'COA-21-088, Library east wing restroom remodel', agency: 'City of Alder', scope: 'Two restrooms brought to accessibility standards; partitions, fixtures and tile.', offers: '4', changes: '1 change order, final value $136,200' }
+  leadById('p2').awards = [
+    { id: 'a3', source: LOCAL_FEED, contractor: 'Marlow Builders', amount: 131500, start: '2021-06', end: '2021-10', contract: 'COA-21-088, Library east wing restroom remodel', agency: 'City of Alder', scope: 'Two restrooms brought to accessibility standards; partitions, fixtures and tile.', offers: '4', changes: '1 change order, final value $136,200' }
   ];
-  sample.leads[2].awards = [
-    { id: 'a4', contractor: 'Northside Mechanical', amount: 96200, start: '2014-10', end: '2014-12', contract: 'APD-14-031, Community center boiler no. 2', agency: 'Alder Parks District', scope: 'Replacement of one 1.5M BTU boiler and its controls.', offers: '2', changes: 'None' }
+  leadById('l3').awards = [
+    { id: 'a4', source: LOCAL_FEED, contractor: 'Northside Mechanical', amount: 96200, start: '2014-10', end: '2014-12', contract: 'APD-14-031, Community center boiler no. 2', agency: 'Alder Parks District', scope: 'Replacement of one 1.5M BTU boiler and its controls.', offers: '2', changes: 'None' }
   ];
   sample.bid = {
     lines: [
@@ -742,21 +778,30 @@ import * as React from 'react';
       ];
     },
     find_work: function (p) {
+      var list = p.listings && p.listings.length ? p.listings : sample.leads;
       var sel = React.useState('p2');
-      var lead = sample.leads.filter(function (x) { return x.id === sel[0]; })[0] || sample.leads[0];
+      var lead = list.filter(function (x) { return x.id === sel[0]; })[0] || list[0];
+      var groups = splitByFit(list);
+      function cards(items) {
+        return items.map(function (x) {
+          var on = x.id === lead.id;
+          return h('div', { key: x.id, className: cx('cb-pick', on && 'cb-pick-on'), 'data-listing': x.id, 'data-fit': x.fit && !x.fit.ideal ? 'other' : 'ideal' }, h(OpportunityCard, Object.assign({}, x, { action: on ? 'Brief open' : 'Open brief', trackId: 'lead_' + x.id, onAction: function () { sel[1](x.id); } })));
+        });
+      }
       return [
-        pageHead('Find work', sampleTag(), h(Button, { variant: 'secondary', trackId: 'edit_filters' }, 'Edit filters')),
-        h('div', { className: 'cb-filters', 'data-section': 'filters', 'aria-label': 'Active filters' }, ['HVAC', 'Paving', 'Roofing', 'General building'].map(function (t) { return h(StatusPill, { key: t, tone: 'info' }, t); }),
-          h(StatusPill, null, 'Within 50 miles'), h(StatusPill, null, 'Under $750,000'), h('span', { className: 'cb-meta' }, sample.leads.length + ' matches, best first')),
+        pageHead('Find work', sampleTag(), h(Button, { variant: 'secondary', trackId: 'edit_filters', onClick: function () { p.go('settings'); } }, 'Edit filters')),
+        h('div', { className: 'cb-filters', 'data-section': 'filters', 'aria-label': 'Your settings' }, ['HVAC', 'Paving', 'Roofing', 'General building'].map(function (t) { return h(StatusPill, { key: t, tone: 'info' }, t); }),
+          h(StatusPill, null, 'Within 50 miles'), h(StatusPill, null, 'Under $750,000'), h('span', { className: 'cb-meta' }, groups.ideal.length + (groups.ideal.length === 1 ? ' best fit, ' : ' best fits, ') + groups.rest.length + ' other open')),
         h('div', { className: 'cb-grid-find' },
-          h('div', { className: 'cb-stack-sm', 'data-section': 'opportunities' }, sample.leads.map(function (x) {
-            var on = x.id === lead.id;
-            return h('div', { key: x.id, className: cx('cb-pick', on && 'cb-pick-on') }, h(OpportunityCard, Object.assign({}, x, { action: on ? 'Brief open' : 'Open brief', trackId: 'lead_' + x.id, onAction: function () { sel[1](x.id); } })));
-          })),
+          h('div', { className: 'cb-stack-sm', 'data-section': 'opportunities' },
+            h('h2', { className: 'cb-group-h' }, 'Best fits for you', h('span', { className: 'cb-meta' }, 'Match your trades, distance and bonding limit')),
+            groups.ideal.length ? cards(groups.ideal) : h('div', { className: 'cb-card' }, h(EmptyState, { id: 'best_fits', title: 'No best fits right now', action: 'Edit filters', trackId: 'empty_edit_filters', onAction: function () { p.go('settings'); } }, 'Nothing open matches all of your settings. Other open projects are listed below.')),
+            groups.rest.length ? h('h2', { className: 'cb-group-h cb-group-rest' }, 'Other open projects', h('span', { className: 'cb-meta' }, 'Outside one or more of your settings')) : null,
+            cards(groups.rest)),
           h('div', { className: 'cb-card cb-card-lg cb-brief', 'data-section': 'brief', 'aria-live': 'polite' },
             h('div', { className: 'cb-opp-top' }, h(StageBadge, { stage: 'research' }), h(StatusPill, { tone: 'info' }, lead.match + '% match')),
             h('h2', { className: 'cb-h1' }, lead.title),
-            h('p', { className: 'cb-meta' }, lead.owner + ' · ' + formatMoney(lead.value) + ' estimate · ' + lead.due),
+            h('p', { className: 'cb-meta' }, lead.owner + ' · ' + formatMoney(lead.value) + ' estimate · ' + lead.due + (lead.source ? ' · Listed on ' + lead.source : '') + (typeof lead.miles === 'number' ? ' · ' + lead.miles + ' miles away' : '')),
             h('p', null, lead.summary),
             p.tpl === 'hivis' && lead.awards && lead.awards.length ? h(AwardHistory, { awards: lead.awards }) : null,
             h('h3', { className: 'cb-label' }, 'What the documents require'),
@@ -1152,7 +1197,7 @@ import * as React from 'react';
         hasWork
           ? h('div', { 'data-section': 'tasks' }, h(TaskList, { tasks: d.tasks, onAction: function (t) { p.go(viewForStage(t.stage)); } }))
           : h('div', { className: 'cb-stack-sm', 'data-section': 'matches' },
-              h('div', { className: 'cb-card-h' }, 'Projects that fit', h('span', { className: 'cb-meta' }, 'From SAM.gov, matched to your settings')),
+              h('div', { className: 'cb-card-h' }, 'Projects that fit', h('span', { className: 'cb-meta' }, 'Matched to your settings and location')),
               d.matches.length
                 ? d.matches.map(function (x) { return h(OpportunityCard, Object.assign({ key: x.id }, x, { action: 'Open brief', trackId: 'match_' + x.id, onAction: function () { p.go('find_work'); } })); })
                 : h('div', { className: 'cb-card' }, h(EmptyState, { id: 'matches', title: 'No matches yet', action: 'Check your settings', trackId: 'matches_settings', onAction: function () { p.go('settings'); } }, 'New projects are checked against your trades, distance and bonding limit every morning.'))),
@@ -1166,7 +1211,7 @@ import * as React from 'react';
   // A new account in Hi-Vis: the same screen with nothing under way, so matched projects fill it.
   function todayEmpty(p) {
     return [pageHead('Welcome. Here is work that fits.', sampleTag(), h(Button, { variant: 'primary', trackId: 'welcome_import', onClick: function () { p.go('import_bid'); } }, 'Import a bid'))]
-      .concat(todayOverview(p, { tasks: [], jobs: [], months: [], matches: sample.leads, stats: jobStats() }));
+      .concat(todayOverview(p, { tasks: [], jobs: [], months: [], matches: splitByFit(p.listings && p.listings.length ? p.listings : sample.leads).ideal, stats: jobStats() }));
   }
   var HIVIS_VIEWS = { overview: todayOverview, welcome: todayEmpty };
   function viewFor(tpl, view) { return tpl === 'hivis' && Object.prototype.hasOwnProperty.call(HIVIS_VIEWS, view) ? HIVIS_VIEWS[view] : BLUEPRINT_VIEWS[view]; }
@@ -1180,7 +1225,7 @@ import * as React from 'react';
     var settings = h('a', { className: 'cb-appnav-foot', href: viewHref('settings'), 'aria-current': view === 'settings' ? 'page' : undefined, 'data-track': 'nav_settings', onClick: settingsClick }, 'Settings');
     var main = h('main', { className: 'cb-main' },
       view === 'settings' ? null : h('div', { className: 'cb-trial', 'data-section': 'trial', role: 'status' }, h('span', null, h('strong', null, '6 days left'), ' in your free trial. No card on file.'), h(Button, { variant: 'ghost', size: 'sm', trackId: 'trial_choose_plan', onClick: function () { go('settings'); } }, 'Choose a plan')),
-      h(ViewHost, { key: view, View: viewFor(tpl, view), go: go, tpl: tpl, onSignOut: p.onSignOut, onPlans: p.onPlans }));
+      h(ViewHost, { key: view, View: viewFor(tpl, view), go: go, tpl: tpl, listings: p.listings, onSignOut: p.onSignOut, onPlans: p.onPlans }));
     if (tpl === 'hivis') {
       return frame('app', tpl, h('div', { className: 'cb-top-layout', 'data-view': view },
         h('div', { className: 'cb-band-shell' },
@@ -1191,7 +1236,7 @@ import * as React from 'react';
     return frame('app', tpl, h('div', { className: 'cb-shell-layout', 'data-view': view }, h(AppNav, { orient: 'side', current: parent, onNavigate: go }, settings), main));
   }
   // Each screen mounts as its own component so its state resets when you leave it.
-  function ViewHost(p) { return h(React.Fragment, null, React.Children.toArray(p.View({ go: p.go, tpl: p.tpl, onSignOut: p.onSignOut, onPlans: p.onPlans }))); }
+  function ViewHost(p) { return h(React.Fragment, null, React.Children.toArray(p.View({ go: p.go, tpl: p.tpl, listings: p.listings, onSignOut: p.onSignOut, onPlans: p.onPlans }))); }
 
   function Workspace(p) {
     var tpl = templateOf(p);
@@ -1439,10 +1484,10 @@ import * as React from 'react';
     Button: Button, SignupForm: SignupForm, StatusPill: StatusPill, StageBadge: StageBadge, LifecycleStepper: LifecycleStepper,
     KpiTile: KpiTile, MoneySummary: MoneySummary, ProfitChart: ProfitChart, OpportunityCard: OpportunityCard, PayablesTable: PayablesTable, DataTable: DataTable, ProgressBar: ProgressBar, Checklist: Checklist, ScheduleBoard: ScheduleBoard, TextField: TextField, ChipSelect: ChipSelect, PricingPage: PricingPage, AuthPage: AuthPage, Onboarding: Onboarding, Prototype: Prototype, Notice: Notice, EmptyState: EmptyState, Dialog: Dialog, Skeleton: Skeleton, MessagePage: MessagePage, ArticlePage: ArticlePage, AwardHistory: AwardHistory,
     Experiment: Experiment, LandingPage: LandingPage, Workspace: Workspace,
-    STAGES: STAGES, TEMPLATES: TEMPLATES, VIEWS: VIEWS, navId: navId, checklistProgress: checklistProgress, viewParent: viewParent, jobTotals: jobTotals, filterByStatus: filterByStatus, toggleChoice: toggleChoice, nextStep: nextStep, parseMoney: parseMoney, payRunTotal: payRunTotal, viewForStage: viewForStage, monthsBetween: monthsBetween, formatYearMonth: formatYearMonth, parseYearMonth: parseYearMonth, currentJobs: currentJobs, jobStats: jobStats, PAGES: PAGES, PLANS: PLANS, sample: sample,
+    STAGES: STAGES, TEMPLATES: TEMPLATES, VIEWS: VIEWS, navId: navId, checklistProgress: checklistProgress, viewParent: viewParent, jobTotals: jobTotals, filterByStatus: filterByStatus, toggleChoice: toggleChoice, nextStep: nextStep, parseMoney: parseMoney, payRunTotal: payRunTotal, viewForStage: viewForStage, monthsBetween: monthsBetween, formatYearMonth: formatYearMonth, parseYearMonth: parseYearMonth, currentJobs: currentJobs, splitByFit: splitByFit, jobStats: jobStats, PAGES: PAGES, PLANS: PLANS, sample: sample,
     assignVariant: assignVariant, hashString: hashString, formatMoney: formatMoney, formatPercent: formatPercent,
     profitMargin: profitMargin, stageIndex: stageIndex, cx: cx, track: track, setTracker: setTracker, setLinks: setLinks, modifiedClick: modifiedClick, useExperiment: useExperiment
   };
 
-export { Button, SignupForm, StatusPill, StageBadge, LifecycleStepper, KpiTile, MoneySummary, ProfitChart, OpportunityCard, PayablesTable, DataTable, ProgressBar, Checklist, ScheduleBoard, TextField, ChipSelect, PricingPage, AuthPage, Onboarding, Prototype, Notice, EmptyState, Dialog, Skeleton, MessagePage, ArticlePage, AwardHistory, Experiment, LandingPage, Workspace, STAGES, TEMPLATES, VIEWS, navId, checklistProgress, viewParent, jobTotals, filterByStatus, toggleChoice, nextStep, parseMoney, payRunTotal, viewForStage, monthsBetween, formatYearMonth, parseYearMonth, currentJobs, jobStats, PAGES, PLANS, sample, assignVariant, hashString, formatMoney, formatPercent, profitMargin, stageIndex, cx, track, setTracker, setLinks, modifiedClick, useExperiment };
+export { Button, SignupForm, StatusPill, StageBadge, LifecycleStepper, KpiTile, MoneySummary, ProfitChart, OpportunityCard, PayablesTable, DataTable, ProgressBar, Checklist, ScheduleBoard, TextField, ChipSelect, PricingPage, AuthPage, Onboarding, Prototype, Notice, EmptyState, Dialog, Skeleton, MessagePage, ArticlePage, AwardHistory, Experiment, LandingPage, Workspace, STAGES, TEMPLATES, VIEWS, navId, checklistProgress, viewParent, jobTotals, filterByStatus, toggleChoice, nextStep, parseMoney, payRunTotal, viewForStage, monthsBetween, formatYearMonth, parseYearMonth, currentJobs, splitByFit, jobStats, PAGES, PLANS, sample, assignVariant, hashString, formatMoney, formatPercent, profitMargin, stageIndex, cx, track, setTracker, setLinks, modifiedClick, useExperiment };
 export default CB;

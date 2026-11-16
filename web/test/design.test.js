@@ -525,8 +525,9 @@ test('Hi-Vis overview: scoreboard, then what needs you, job stats and your jobs'
 test('Hi-Vis with nothing under way shows matched projects and leaves jobs empty', () => {
   const out = html(h(CB.Workspace, { template: 'hivis', view: 'welcome' }));
   assert.match(out, /data-section="matches"/);
-  assert.match(out, /From SAM\.gov, matched to your settings/);
-  assert.equal((out.match(/data-track="match_/g) || []).length, CB.sample.leads.length);
+  assert.match(out, /Matched to your settings and location/);
+  assert.equal((out.match(/data-track="match_/g) || []).length, 4, 'only best fits fill the space');
+  assert.doesNotMatch(out, /Regional airport terminal reroof/);
   assert.match(out, /data-stat="quotes"[^>]*><span class="cb-stat-value">0</);
   assert.match(out, /Nothing pressing/);
   assert.match(out, /data-empty="jobs">No jobs open\./);
@@ -555,9 +556,62 @@ test('the job stats card shows the four counts, each a tracked control', () => {
   assert.equal((out.match(/data-track="stat_/g) || []).length, 4);
 });
 
-test('the award history names its source', () => {
-  assert.match(html(h(CB.AwardHistory, { awards: CB.sample.leads[0].awards })), /Source: USAspending\.gov/);
-  assert.match(html(h(CB.AwardHistory, { awards: CB.sample.leads[0].awards, source: 'Other' })), />Other</);
+test('each award names its own source', () => {
+  const out = html(h(CB.AwardHistory, { awards: [...CB.sample.leads.find((l) => l.id === 'l5').awards, ...CB.sample.leads.find((l) => l.id === 'p1').awards] }));
+  assert.equal((out.match(/class="cb-award-source"/g) || []).length, 3);
+  assert.match(out, /class="cb-award-source">USAspending\.gov</);
+  assert.match(out, /class="cb-award-source">State and local feed</);
+  assert.match(out, /Each award names the source it came from/);
+  assert.match(html(h(CB.AwardHistory, { awards: CB.sample.leads[0].awards, note: 'Other' })), />Other</);
+  assert.doesNotMatch(html(h(CB.AwardHistory, { awards: CB.sample.leads[0].awards, note: '' })), /cb-meta/);
+  assert.doesNotMatch(html(h(CB.AwardHistory, { awards: [{ id: 'z', contractor: 'X', amount: 1, start: '2020-01', end: '2020-02' }] })), /cb-award-source/);
+});
+
+test('every sample award and listing carries a source', () => {
+  for (const l of CB.sample.leads) {
+    assert.ok(l.source, l.id);
+    for (const a of l.awards || []) assert.ok(a.source, a.id);
+  }
+  assert.equal(CB.sample.leads.find((l) => l.level === 'federal').source, 'SAM.gov');
+});
+
+test('splitByFit keeps order and treats a listing with no fit as a best fit', () => {
+  const list = [{ id: 'a', fit: { ideal: true } }, { id: 'b', fit: { ideal: false } }, { id: 'c' }, { id: 'd', fit: { ideal: false } }];
+  const g = CB.splitByFit(list);
+  assert.deepEqual(g.ideal.map((x) => x.id), ['a', 'c']);
+  assert.deepEqual(g.rest.map((x) => x.id), ['b', 'd']);
+  assert.deepEqual(CB.splitByFit(), { ideal: [], rest: [] });
+  assert.deepEqual(CB.splitByFit([null]).ideal.length, 1);
+});
+
+test('sample listings are ordered best fits first, stronger match first within each group', () => {
+  const ids = CB.sample.leads.map((l) => l.id);
+  assert.deepEqual(ids, ['p1', 'p2', 'l3', 'l5', 'l4', 'l6']);
+  for (const l of CB.sample.leads) assert.equal(l.fit.ideal, l.fit.reasons.length === 0, l.id);
+});
+
+test('Find work lists best fits, then the rest with the reason each fell short', () => {
+  for (const template of ['blueprint', 'hivis']) {
+    const out = html(h(CB.Workspace, { template, view: 'find_work' }));
+    assert.ok(out.indexOf('Best fits for you') < out.indexOf('Other open projects'), template);
+    const fits = [...out.matchAll(/data-listing="([^"]+)" data-fit="([^"]+)"/g)].map((m) => m[1] + ':' + m[2]);
+    assert.deepEqual(fits, ['p1:ideal', 'p2:ideal', 'l3:ideal', 'l5:ideal', 'l4:other', 'l6:other'], template);
+    assert.match(out, /4 best fits, 2 other open/);
+    assert.match(out, /Fencing is not one of your trades/);
+    assert.match(out, /140 miles away, past your 50<\/li><li>Over your \$750,000 bonding limit/);
+    assert.match(out, /Listed on State and local feed · 4 miles away/);
+  }
+});
+
+test('Find work takes listings from outside, and copes with none being a best fit', () => {
+  const one = { ...CB.sample.leads[0], id: 'x1', title: 'Passed in', fit: { ideal: false, reasons: ['Too far'] } };
+  const out = html(h(CB.Workspace, { view: 'find_work', listings: [one] }));
+  assert.match(out, /data-listing="x1" data-fit="other"/);
+  assert.doesNotMatch(out, /data-listing="p1"/);
+  assert.match(out, /0 best fits, 1 other open/);
+  assert.match(out, /data-empty="best_fits"/);
+  assert.match(out, /<h2 class="cb-h1">Passed in<\/h2>/);
+  assert.match(html(h(CB.Workspace, { view: 'find_work', listings: [] })), /data-listing="p1"/);
 });
 
 test('currentJobs keeps jobs from the bid stage on', () => {
@@ -600,7 +654,7 @@ test('Find work shows award history in Hi-Vis only, and only for projects that h
   assert.match(hv, /data-section="award_history"/);
   assert.match(hv, /Marlow Builders/); // the lead that is open by default
   assert.doesNotMatch(html(h(CB.Workspace, { template: 'blueprint', view: 'find_work' })), /data-section="award_history"/);
-  assert.equal(CB.sample.leads[3].awards, undefined);
+  assert.equal(CB.sample.leads.find((l) => l.id === 'l4').awards, undefined);
 });
 
 test('viewForStage maps each lifecycle stage to a screen that exists', () => {

@@ -89,6 +89,15 @@ describe('Hi-Vis', () => {
     expect(fresh).toContain('data-empty="jobs"');
   });
 
+  test('Find work shows the listings it is given, grouped by fit', () => {
+    const listings = [{ id: 'z1', title: 'Passed in', owner: 'Agency', value: 5, source: 'Some feed', fit: { ideal: false, reasons: ['Too far'] }, requirements: [] }];
+    const html = renderToStaticMarkup(<WorkspaceScreen view="find_work" template="hivis" listings={listings} />);
+    expect(html).toContain('data-listing="z1" data-fit="other"');
+    expect(html).toContain('Too far');
+    expect(html).toContain('Some feed');
+    expect(html).not.toContain('data-listing="p1"');
+  });
+
   test('screens default to the template the site was built with', () => {
     expect(renderToStaticMarkup(<HomeScreen />)).toContain('data-template="blueprint"');
     expect(renderToStaticMarkup(<WorkspaceScreen view="overview" />)).toContain('data-template="blueprint"');

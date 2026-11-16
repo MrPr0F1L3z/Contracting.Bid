@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
-import { exportedNames, toModule, toVitest } from '../scripts/design-module.mjs';
+import * as React from 'react';
+import { exportedNames, extractSampleListings, toModule, toVitest } from '../scripts/design-module.mjs';
 import { tokensToCss } from '../scripts/tokens-css.mjs';
 
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
@@ -52,6 +53,13 @@ describe('design bundle import', () => {
     expect(out).toContain("test('x', () => {});");
     expect(out).not.toContain('require(');
     expect(() => toVitest("test('x', () => {});")).toThrow(/setup block/);
+  });
+
+  test('extractSampleListings runs the bundle and returns its sample projects as plain data', () => {
+    const bundle = "(function () { 'use strict'; var React = window.React; window.CB = { sample: { leads: [{ id: 'a', when: new Date(0), fn: function () {} }] } }; })();";
+    expect(extractSampleListings(bundle, React)).toEqual([{ id: 'a', when: '1970-01-01T00:00:00.000Z' }]);
+    expect(() => extractSampleListings("window.CB = { sample: { leads: [] } };", React)).toThrow(/no sample listings/);
+    expect(() => extractSampleListings("window.CB = {};", React)).toThrow(/no sample listings/);
   });
 
   test('the committed module matches what the importer generates from its own exports', () => {

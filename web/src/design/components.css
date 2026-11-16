@@ -506,3 +506,13 @@ textarea.cb-input { height: auto !important; padding: var(--space-3) var(--space
 .cb-stat-danger .cb-stat-hint { color: var(--ink); }
 [data-theme="hivis"] .cb-stat { border-width: 2px; border-color: var(--ink); }
 [data-theme="hivis"] .cb-stat-danger { border-color: var(--danger); }
+
+/* Listings: where each came from, why one is not a best fit, and the two groups on Find work. */
+.cb-opp-source { color: var(--ink-muted); }
+.cb-opp-reasons { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-2); }
+.cb-opp-reasons li { font-size: 12px; line-height: 20px; font-weight: 600; padding: 0 var(--space-2); border-radius: var(--radius-pill); background: var(--warning-soft); color: var(--warning); }
+.cb-group-h { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--space-1) var(--space-3); font-family: var(--font-display); font-size: 17px; line-height: 24px; font-weight: 600; text-transform: var(--cb-case); margin: 0; }
+.cb-group-h .cb-meta { text-transform: none; }
+.cb-group-rest { margin-top: var(--space-4) !important; padding-top: var(--space-4) !important; border-top: 1px solid var(--line-strong); }
+.cb-award-source { margin-left: var(--space-2); font-size: 12px; line-height: 20px; font-weight: 600; padding: 0 var(--space-2); border-radius: var(--radius-pill); background: var(--surface-sunk); color: var(--ink); white-space: nowrap; }
+.cb-award-line .cb-num { white-space: nowrap; }

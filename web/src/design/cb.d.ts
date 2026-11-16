@@ -19,7 +19,9 @@ export interface MoneySummaryProps { revenue: number; expense: number; period?: 
 export declare function MoneySummary(props: MoneySummaryProps): React.ReactElement;
 export interface ProfitChartProps { data: { label: string; revenue: number; expense: number }[]; height?: number }
 export declare function ProfitChart(props: ProfitChartProps): React.ReactElement;
-export interface OpportunityCardProps { title: string; owner: string; value: number; stage?: StageId; due?: string; match?: number; flag?: string; flagTone?: Tone; action?: string; actionVariant?: 'primary' | 'secondary'; trackId?: string; onAction?: () => void }
+export interface ListingFit { ideal: boolean; reasons: string[] }
+export interface Listing { id: string; title: string; owner: string; value: number; stage?: StageId; match?: number; due?: string; summary?: string; requirements?: { label: string; detail: string; pill: string; tone: Tone }[]; trade?: string; level?: 'federal' | 'local'; place?: { lat: number; lon: number }; miles?: number; source?: string; fit?: ListingFit; awards?: Award[] }
+export interface OpportunityCardProps { source?: string; fit?: ListingFit; title: string; owner: string; value: number; stage?: StageId; due?: string; match?: number; flag?: string; flagTone?: Tone; action?: string; actionVariant?: 'primary' | 'secondary'; trackId?: string; onAction?: () => void }
 export declare function OpportunityCard(props: OpportunityCardProps): React.ReactElement;
 export interface PayablesTableProps { rows: { payee: string; role: string; project: string; due: string; amount: number; status: 'Paid' | 'Approved' | 'Awaiting approval' | 'Overdue' }[] }
 export declare function PayablesTable(props: PayablesTableProps): React.ReactElement;
@@ -59,14 +61,14 @@ export interface MessagePageProps { template?: Template; kind?: 'trial_ended' | 
 export declare function MessagePage(props: MessagePageProps): React.ReactElement;
 export interface ArticlePageProps { template?: Template; kind?: 'terms' | 'privacy'; onNavigate?: (page: SitePage) => void }
 export declare function ArticlePage(props: ArticlePageProps): React.ReactElement;
-export interface Award { id: string; contractor: string; amount: number; /** YYYY-MM */ start: string; /** YYYY-MM */ end: string; contract?: string; agency?: string; scope?: string; offers?: string; changes?: string }
-export interface AwardHistoryProps { awards?: Award[]; title?: string; source?: string }
+export interface Award { id: string; /** Where this award record came from, shown beside it. */ source?: string; contractor: string; amount: number; /** YYYY-MM */ start: string; /** YYYY-MM */ end: string; contract?: string; agency?: string; scope?: string; offers?: string; changes?: string }
+export interface AwardHistoryProps { awards?: Award[]; title?: string; /** The line under the list. Pass '' to leave it out. */ note?: string }
 export declare function AwardHistory(props: AwardHistoryProps): React.ReactElement | null;
 export interface ExperimentProps { name: string; variants: Record<string, React.ReactNode | ((key: string) => React.ReactNode)>; userId?: string; weights?: number[]; force?: string }
 export declare function Experiment(props: ExperimentProps): React.ReactElement | null;
 export interface LandingPageProps { template?: Template; /** Blueprint and Hi-Vis. */ onNavigate?: (page: SitePage, email?: string) => void }
 export declare function LandingPage(props: LandingPageProps): React.ReactElement;
-export interface WorkspaceProps { template?: Template; /** Blueprint and Hi-Vis: the opening screen. */ view?: WorkspaceView; /** Blueprint and Hi-Vis. */ onNavigate?: (view: WorkspaceView) => void; onPlans?: () => void; onSignOut?: () => void }
+export interface WorkspaceProps { template?: Template; /** Blueprint and Hi-Vis: the opening screen. */ view?: WorkspaceView; /** Blueprint and Hi-Vis. */ onNavigate?: (view: WorkspaceView) => void; onPlans?: () => void; onSignOut?: () => void; /** Find work's listings, already ranked: best fits (`fit.ideal`) first. Defaults to the sample set. */ listings?: Listing[] }
 export declare function Workspace(props: WorkspaceProps): React.ReactElement;
 export interface TrackPayload { event: string; props: Record<string, unknown>; at: number }
 export declare function assignVariant(userId: string, experiment: string, variants: string[], weights?: number[]): string | null;
@@ -98,3 +100,4 @@ export declare function formatYearMonth(s: unknown): string;
 export declare function monthsBetween(start: unknown, end: unknown): number | null;
 export declare function currentJobs<T extends { stage?: string }>(projects?: T[]): T[];
 export declare function jobStats(data?: { quotes?: { status?: string }[]; bids?: { status?: string; amount?: number }[]; jobs?: unknown[]; tasks?: { urgent?: boolean; tone?: string }[] }): { quotesRequested: number; quotesReceived: number; quotesOutstanding: number; bidsAwaiting: number; bidsAwaitingUsd: number; awardedJobs: number; urgent: number };
+export declare function splitByFit<T extends { fit?: { ideal?: boolean } }>(list?: (T | null)[]): { ideal: T[]; rest: T[] };

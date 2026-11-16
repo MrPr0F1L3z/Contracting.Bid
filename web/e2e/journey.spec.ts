@@ -118,9 +118,12 @@ test('Hi-Vis: a contractor name opens and closes that award\'s details', async (
   await expect(name).toHaveAttribute('aria-expanded', 'true');
   await expect(page.getByText('COA-21-088, Library east wing restroom remodel')).toBeVisible();
   await expect(page.getByText('[5 mos.]')).toBeVisible();
-  await expect(page.getByText(/Source: USAspending\.gov/)).toBeVisible();
+  await expect(page.locator('.cb-award-source').first()).toHaveText('State and local feed');
   await name.click();
   await expect(page.getByText('COA-21-088, Library east wing restroom remodel')).toBeHidden();
+  // A federal project's award names a different source.
+  await page.locator('[data-listing="l5"]').getByRole('button', { name: 'Open brief' }).click();
+  await expect(page.locator('.cb-award-source').first()).toHaveText('USAspending.gov');
 });
 
 test('Hi-Vis: a task on the overview opens the screen that deals with it', async ({ page }) => {
@@ -132,6 +135,17 @@ test('Hi-Vis: a task on the overview opens the screen that deals with it', async
   await page.getByRole('button', { name: /Bid awaiting a response/ }).click();
   await expect(page).toHaveURL(/\/app\/bids$/);
   await page.goto('/app/welcome');
-  await expect(page.getByText('From SAM.gov, matched to your settings')).toBeVisible();
+  await expect(page.getByText('Matched to your settings and location')).toBeVisible();
   await expect(page.getByText('No jobs open.')).toBeVisible();
+});
+
+test('Find work lists best fits first, then the rest with the reason', async ({ page }) => {
+  await page.goto('/app/find-work');
+  const cards = page.locator('[data-listing]');
+  await expect(cards).toHaveCount(6);
+  expect(await cards.evaluateAll((els) => els.map((e) => e.getAttribute('data-fit')))).toEqual(['ideal', 'ideal', 'ideal', 'ideal', 'other', 'other']);
+  await expect(page.getByText('4 best fits, 2 other open')).toBeVisible();
+  await expect(page.getByText('Fencing is not one of your trades')).toBeVisible();
+  await page.locator('[data-listing="l5"]').getByRole('button', { name: 'Open brief' }).click();
+  await expect(page.getByText(/Listed on SAM\.gov · 22 miles away/)).toBeVisible();
 });

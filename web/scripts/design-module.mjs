@@ -1,3 +1,5 @@
+import vm from 'node:vm';
+
 // Turns the design system's browser bundle (one script that sets window.CB) into an ES module
 // the Next.js app can import. Kept as pure functions so the conversion is unit-tested.
 
@@ -59,4 +61,17 @@ export function toVitest(source) {
     "vi.stubGlobal('window', { CustomEvent: class { constructor(type, init) { this.type = type; this.detail = init.detail; } }, dispatchEvent: (e) => events.push(e) });",
     source.replace(TEST_HEAD, ''),
   ].join('\n');
+}
+
+/**
+ * The sample open projects built into the bundle, as plain data. The bundle is a client-side module,
+ * so server code cannot import its values; this gives the server the same records as a JSON file.
+ * `React` is whatever React the caller has; the bundle only needs it to load.
+ */
+export function extractSampleListings(source, React) {
+  const window = { React };
+  vm.runInNewContext(source, { window, Math, Date, Object, Array, String, Number, JSON });
+  const leads = window.CB?.sample?.leads;
+  if (!Array.isArray(leads) || leads.length === 0) throw new Error('bundle has no sample listings (CB.sample.leads)');
+  return JSON.parse(JSON.stringify(leads));
 }

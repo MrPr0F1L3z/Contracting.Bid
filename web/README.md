@@ -69,6 +69,24 @@ Unknown URLs get the not-found page with a 404 status. The workspace, onboarding
 | `test/` | Unit tests (Vitest) |
 | `e2e/` | Browser tests (Playwright) |
 
+## Where listings and awards come from
+
+`src/lib/sources/` is the layer between outside data providers and the screens.
+
+| File | What it does |
+| --- | --- |
+| `types.ts` | `ListingProvider` (open projects) and `AwardProvider` (earlier awards): a name, the levels of government covered, and one async method each |
+| `providers.ts` | The providers in use. **All four are stubs** serving the design's sample records: SAM.gov and a state and local feed for listings; USAspending.gov and a state and local feed for awards |
+| `aggregate.ts` | Calls every provider, stamps each listing and award with its provider's name, drops duplicates, and reports any provider that failed without losing the rest |
+| `rank.ts` | Checks each listing against the contractor's trades, distance from their location and bonding limit. Best fits come first; the rest follow, each with the reason it fell short. Nothing is hidden |
+| `preferences.ts` | The sample contractor's settings, until accounts exist, and parsers for the Settings fields |
+
+To connect a real service, write an object of the same shape that calls it and swap it into the list in `providers.ts`. Award providers are asked only about the levels they cover, so a federal feed and a local feed sit side by side.
+
+Find work (`/app/find-work`) and the Hi-Vis first-run screen get their listings this way, on the server. A test checks that the pipeline reproduces exactly what the design system shows for the sample settings.
+
+Not done yet: reading the signed-in contractor's real settings and location, showing provider failures on the screen, and caching or paging provider results.
+
 ## The design system
 
 `src/design/cb.js`, `cb.d.ts`, `components.css`, `tokens.json` and `test/design.test.js` are imported from the Contracting.Bid design system. Don't edit them here. Change the design system, then:
