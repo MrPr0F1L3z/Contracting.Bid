@@ -18,6 +18,6 @@ export default async function Page({ params }: { params: Promise<{ view?: string
   const view = viewFromSegments((await params).view);
   if (!view) notFound();
   // The two screens that list open projects get them from the providers, ranked for the contractor.
-  const listings = view === 'find_work' || view === 'welcome' ? (await loadListings()).listings : undefined;
+  const listings = view === 'find_work' ? (await loadListings()).listings : undefined;
   return <WorkspaceScreen view={view} listings={listings} />;
 }

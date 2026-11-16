@@ -508,32 +508,46 @@ for (const view of CB.VIEWS) {
   });
 }
 
-test('Hi-Vis overview: scoreboard, then what needs you, job stats and your jobs', () => {
+test('Hi-Vis overview: scoreboard, job stats in one row, jobs beside the selected job, then tasks and money', () => {
   const out = html(h(CB.Workspace, { template: 'hivis' }));
   assert.match(out, /cb-scoreboard/);
-  assert.ok(out.indexOf('data-section="trial"') < out.indexOf('data-section="tasks"'));
-  assert.equal((out.match(/data-task="/g) || []).length, CB.sample.tasks.length);
-  assert.match(out, /data-section="profit".*data-section="job_stats".*data-section="pipeline"/s);
+  assert.match(out, /data-section="trial".*data-section="job_stats".*data-section="pipeline".*data-section="job_detail".*data-section="tasks".*data-section="profit"/s);
   assert.match(out, /<div class="cb-plain" data-section="job_stats">/, 'job stats has no card frame');
+  assert.match(out, /class="cb-stats cb-stats-row"/);
+  assert.equal((out.match(/data-stat="/g) || []).length, 4);
   assert.doesNotMatch(out, /Your money/);
   assert.equal((out.match(/class="cb-scoreboard"/g) || []).length, 1, 'money figures appear once, in the scoreboard');
-  assert.equal((out.match(/data-job="/g) || []).length, CB.currentJobs(CB.sample.projects).length);
+  const jobs = CB.currentJobs(CB.sample.projects);
+  assert.equal((out.match(/data-job="/g) || []).length, jobs.length);
+  assert.match(out, new RegExp('data-job-detail="' + jobs[0].id + '"'), 'the first job is open to begin with');
+  assert.equal((out.match(/aria-pressed="true"/g) || []).length, 1);
+  assert.match(out, /data-fig="status"/, 'a job at bid has no contract figures');
+  assert.match(out, /data-section="job_tasks"/);
   assert.doesNotMatch(out, /cb-board|data-section="matches"/);
   assert.doesNotMatch(html(h(CB.Workspace, { template: 'hivis', view: 'money' })), /cb-scoreboard/);
-  assert.doesNotMatch(html(h(CB.Workspace, { template: 'blueprint' })), /cb-scoreboard|data-task=/);
+  assert.doesNotMatch(html(h(CB.Workspace, { template: 'blueprint' })), /cb-scoreboard|data-task=|cb-stats-row/);
 });
 
-test('Hi-Vis with nothing under way shows matched projects and leaves jobs empty', () => {
+test('Hi-Vis welcome is the same screen as Blueprint: three ways to start, setup and numbers', () => {
   const out = html(h(CB.Workspace, { template: 'hivis', view: 'welcome' }));
-  assert.match(out, /data-section="matches"/);
-  assert.match(out, /Matched to your settings and location/);
-  assert.equal((out.match(/data-track="match_/g) || []).length, 4, 'only best fits fill the space');
-  assert.doesNotMatch(out, /Regional airport terminal reroof/);
-  assert.match(out, /data-stat="quotes"[^>]*><span class="cb-stat-value">0</);
-  assert.match(out, /Nothing pressing/);
-  assert.match(out, /data-empty="jobs">No jobs open\./);
-  assert.doesNotMatch(out, /data-task=|data-job=|data-section="profit"/);
-  assert.match(html(h(CB.Workspace, { template: 'blueprint', view: 'welcome' })), /data-section="start"/);
+  assert.match(out, /Welcome\. Pick a place to start\./);
+  assert.deepEqual((out.match(/data-start="[a-z]+"/g) || []), ['data-start="import"', 'data-start="match"', 'data-start="job"']);
+  assert.match(out, /data-section="start".*data-section="checklist".*data-section="kpis"/s);
+  assert.match(out, /Your numbers show up here/);
+  assert.doesNotMatch(out, /data-task=|data-job=|data-section="profit"|data-section="matches"|data-section="job_stats"|cb-scoreboard/);
+  const main = (x) => x.slice(x.indexOf('cb-pagehead'));
+  assert.equal(main(out), main(html(h(CB.Workspace, { template: 'blueprint', view: 'welcome' }))));
+});
+
+test('jobDetail takes money from the contract record, falls back to the bid value, and picks the job\'s tasks', () => {
+  const s = CB.sample;
+  const roof = s.projects.find((x) => x.id === 'p5');
+  assert.deepEqual(CB.jobDetail(roof, s.jobs, s.tasks), { underContract: true, contract: 318000, billed: 159000, cost: 128800, profit: 30200, margin: 30200 / 159000, next: 'Pay application 3 ready to send', tasks: [s.tasks[2]] });
+  const culvert = s.projects.find((x) => x.id === 'p3');
+  assert.deepEqual(CB.jobDetail(culvert, s.jobs, s.tasks), { underContract: false, contract: 212500, billed: 0, cost: 0, profit: 0, margin: null, next: 'Bid due Thu 2:00 pm', tasks: [s.tasks[0]] });
+  assert.deepEqual(CB.jobDetail({ title: 'Bare', stage: 'award' }), { underContract: false, contract: 0, billed: 0, cost: 0, profit: 0, margin: null, next: '', tasks: [] });
+  assert.equal(CB.jobDetail(null, s.jobs, s.tasks), null);
+  assert.equal(CB.jobDetail(undefined), null);
 });
 
 test('jobStats counts quotes, bids awaiting a response, awarded jobs and urgent items', () => {
@@ -650,11 +664,11 @@ test('AwardHistory: one line per award, the contractor name is the control, deta
   assert.doesNotMatch(html(h(CB.AwardHistory, { awards: [{ id: 'z', contractor: 'X', amount: 1, start: 'bad', end: 'bad' }] })), /mos\./);
 });
 
-test('Find work shows award history in Hi-Vis only, and only for projects that have one', () => {
+test('Find work shows award history in both templates, and only for projects that have one', () => {
   const hv = html(h(CB.Workspace, { template: 'hivis', view: 'find_work' }));
   assert.match(hv, /data-section="award_history"/);
   assert.match(hv, /Marlow Builders/); // the lead that is open by default
-  assert.doesNotMatch(html(h(CB.Workspace, { template: 'blueprint', view: 'find_work' })), /data-section="award_history"/);
+  assert.match(html(h(CB.Workspace, { template: 'blueprint', view: 'find_work' })), /data-section="award_history"/);
   assert.equal(CB.sample.leads.find((l) => l.id === 'l4').awards, undefined);
 });
 

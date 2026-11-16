@@ -110,8 +110,7 @@ test('no page logs a console error', async ({ page }) => {
   expect(problems).toEqual([]);
 });
 
-test('Hi-Vis: a contractor name opens and closes that award\'s details', async ({ page }) => {
-  test.skip(TEMPLATE !== 'hivis', 'award history is shown in Hi-Vis only');
+test('a contractor name opens and closes that award\'s details', async ({ page }) => {
   await page.goto('/app/find-work');
   const name = page.getByRole('button', { name: 'Marlow Builders' });
   await expect(name).toHaveAttribute('aria-expanded', 'false');
@@ -136,9 +135,20 @@ test('Hi-Vis: a task on the overview opens the screen that deals with it', async
   await page.goto('/app');
   await page.getByRole('button', { name: /Bid awaiting a response/ }).click();
   await expect(page).toHaveURL(/\/app\/bids$/);
+  await page.goto('/app');
+  const detail = page.locator('[data-section="job_detail"]');
+  await expect(detail).toHaveAttribute('data-job-detail', 'p3');
+  await page.locator('[data-job="p5"] button').click();
+  await expect(detail).toHaveAttribute('data-job-detail', 'p5');
+  await expect(detail.getByText('$318,000')).toBeVisible();
+  await detail.getByRole('button', { name: 'Open job' }).click();
+  await expect(page).toHaveURL(/\/app\/pay-app$/);
   await page.goto('/app/welcome');
-  await expect(page.getByText('Matched to your settings and location')).toBeVisible();
-  await expect(page.getByText('No jobs open.')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Welcome. Pick a place to start.' })).toBeVisible();
+  await expect(page.locator('[data-start]')).toHaveCount(3);
+  await expect(page.getByText('Your numbers show up here')).toBeVisible();
+  await page.getByRole('button', { name: 'Find work' }).click();
+  await expect(page).toHaveURL(/\/app\/find-work$/);
 });
 
 test('Find work lists best fits first, then the rest with the reason', async ({ page }) => {

@@ -75,20 +75,24 @@ describe('Hi-Vis', () => {
     expect(html).not.toMatch(/href="#/);
   });
 
-  test('Hi-Vis find work shows award history; Blueprint does not', () => {
+  test('Find work shows award history in both templates', () => {
     expect(renderToStaticMarkup(<WorkspaceScreen view="find_work" template="hivis" />)).toContain('data-section="award_history"');
-    expect(renderToStaticMarkup(<WorkspaceScreen view="find_work" template="blueprint" />)).not.toContain('data-section="award_history"');
+    expect(renderToStaticMarkup(<WorkspaceScreen view="find_work" template="blueprint" />)).toContain('data-section="award_history"');
   });
 
-  test('Hi-Vis overview lists tasks and jobs; with nothing under way it lists matched projects', () => {
+  test('Hi-Vis overview shows job stats, jobs and the open job; welcome matches Blueprint', () => {
     const home = renderToStaticMarkup(<WorkspaceScreen view="overview" template="hivis" />);
     expect(home).toContain('data-section="tasks"');
     expect(home).toContain('data-job="');
     expect(home).toContain('data-section="job_stats"');
+    expect(home).toContain('data-section="job_detail"');
+    expect(home.indexOf('data-section="job_stats"')).toBeLessThan(home.indexOf('data-section="pipeline"'));
     expect(home).not.toContain('Your money');
     const fresh = renderToStaticMarkup(<WorkspaceScreen view="welcome" template="hivis" />);
-    expect(fresh).toContain('data-section="matches"');
-    expect(fresh).toContain('data-empty="jobs"');
+    expect(fresh).toContain('Welcome. Pick a place to start.');
+    expect(fresh).toContain('data-section="start"');
+    expect(fresh).toContain('Your numbers show up here');
+    expect(fresh).not.toContain('data-section="matches"');
   });
 
   test('Find work shows the listings it is given, grouped by fit', () => {

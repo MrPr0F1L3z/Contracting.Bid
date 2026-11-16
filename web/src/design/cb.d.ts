@@ -99,5 +99,6 @@ export declare function parseYearMonth(s: unknown): { year: number; month: numbe
 export declare function formatYearMonth(s: unknown): string;
 export declare function monthsBetween(start: unknown, end: unknown): number | null;
 export declare function currentJobs<T extends { stage?: string }>(projects?: T[]): T[];
+export declare function jobDetail(project?: { title?: string; stage?: string; value?: number; due?: string } | null, jobs?: { title?: string; contract?: number; billed?: number; cost?: number; next?: string }[], tasks?: { stage?: string }[]): { underContract: boolean; contract: number; billed: number; cost: number; profit: number; margin: number | null; next: string; tasks: { stage?: string }[] } | null;
 export declare function jobStats(data?: { quotes?: { status?: string }[]; bids?: { status?: string; amount?: number }[]; jobs?: unknown[]; tasks?: { urgent?: boolean; tone?: string }[] }): { quotesRequested: number; quotesReceived: number; quotesOutstanding: number; bidsAwaiting: number; bidsAwaitingUsd: number; awardedJobs: number; urgent: number };
 export declare function splitByFit<T extends { fit?: { ideal?: boolean } }>(list?: (T | null)[]): { ideal: T[]; rest: T[] };
