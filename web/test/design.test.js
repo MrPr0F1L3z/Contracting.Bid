@@ -508,13 +508,70 @@ for (const view of CB.VIEWS) {
   });
 }
 
-test('Hi-Vis overview is the scoreboard and the board, with every job openable', () => {
+test('Hi-Vis overview: scoreboard, then what needs you, your money and your jobs', () => {
   const out = html(h(CB.Workspace, { template: 'hivis' }));
   assert.match(out, /cb-scoreboard/);
-  assert.equal((out.match(/class="cb-col"/g) || []).length, 5);
-  assert.equal((out.match(/data-track="board_/g) || []).length, CB.sample.projects.length);
+  assert.ok(out.indexOf('data-section="trial"') < out.indexOf('data-section="tasks"'));
+  assert.equal((out.match(/data-task="/g) || []).length, CB.sample.tasks.length);
+  assert.match(out, /data-section="money".*data-section="profit".*data-section="pipeline"/s);
+  assert.equal((out.match(/data-job="/g) || []).length, CB.currentJobs(CB.sample.projects).length);
+  assert.doesNotMatch(out, /cb-board|data-section="matches"/);
   assert.doesNotMatch(html(h(CB.Workspace, { template: 'hivis', view: 'money' })), /cb-scoreboard/);
-  assert.doesNotMatch(html(h(CB.Workspace, { template: 'blueprint' })), /cb-scoreboard|cb-board/);
+  assert.doesNotMatch(html(h(CB.Workspace, { template: 'blueprint' })), /cb-scoreboard|data-task=/);
+});
+
+test('Hi-Vis with nothing under way shows matched projects and leaves jobs empty', () => {
+  const out = html(h(CB.Workspace, { template: 'hivis', view: 'welcome' }));
+  assert.match(out, /data-section="matches"/);
+  assert.match(out, /From SAM\.gov, matched to your settings/);
+  assert.equal((out.match(/data-track="match_/g) || []).length, CB.sample.leads.length);
+  assert.match(out, /data-empty="numbers"/);
+  assert.match(out, /data-empty="jobs">No jobs open\./);
+  assert.doesNotMatch(out, /data-task=|data-job=|data-section="profit"/);
+  assert.match(html(h(CB.Workspace, { template: 'blueprint', view: 'welcome' })), /data-section="start"/);
+});
+
+test('currentJobs keeps jobs from the bid stage on', () => {
+  assert.deepEqual(CB.currentJobs(CB.sample.projects).map((p) => p.id), ['p3', 'p4', 'p5', 'p6']);
+  assert.deepEqual(CB.currentJobs([{ id: 'x', stage: 'find' }, { id: 'y', stage: 'nope' }]), []);
+  assert.deepEqual(CB.currentJobs(), []);
+});
+
+test('parseYearMonth, formatYearMonth and monthsBetween', () => {
+  assert.deepEqual(CB.parseYearMonth('2022-01'), { year: 2022, month: 1 });
+  assert.deepEqual(CB.parseYearMonth(' 2025-12 '), { year: 2025, month: 12 });
+  for (const bad of ['2022-13', '2022-00', '22-01', '2022', 'Jan 2022', '', null, undefined]) assert.equal(CB.parseYearMonth(bad), null, String(bad));
+  assert.equal(CB.formatYearMonth('2022-01'), 'Jan 2022');
+  assert.equal(CB.formatYearMonth('2025-12'), 'Dec 2025');
+  assert.equal(CB.formatYearMonth('nope'), '');
+  assert.equal(CB.monthsBetween('2022-01', '2025-12'), 48); // both end months count
+  assert.equal(CB.monthsBetween('2023-04', '2023-09'), 6);
+  assert.equal(CB.monthsBetween('2023-04', '2023-04'), 1);
+  assert.equal(CB.monthsBetween('2023-11', '2024-02'), 4);
+  assert.equal(CB.monthsBetween('2024-02', '2023-11'), null);
+  assert.equal(CB.monthsBetween('x', '2023-11'), null);
+});
+
+test('AwardHistory: one line per award, the contractor name is the control, details start closed', () => {
+  const awards = CB.sample.leads[0].awards;
+  const out = html(h(CB.AwardHistory, { awards }));
+  assert.equal((out.match(/class="cb-award"/g) || []).length, 2);
+  assert.match(out, /<button type="button" class="cb-award-name" aria-expanded="false" aria-controls="(cb-award-\d+-a1)"[^>]*>Cascade Paving &amp; Grading<\/button> awarded <span class="cb-num">\$512,400<\/span> starting Apr 2023 through Sep 2023<span class="cb-num"> \[6 mos\.\]<\/span>/);
+  const panel = /aria-controls="([^"]+)"/.exec(out)[1];
+  assert.match(out, new RegExp('<div id="' + panel + '" class="cb-award-more" aria-hidden="true">'));
+  assert.doesNotMatch(out, /Read more/i);
+  assert.match(out, /Offers received<\/dt><dd>5<\/dd>/);
+  assert.equal(html(h(CB.AwardHistory, { awards: [] })), '');
+  assert.equal(html(h(CB.AwardHistory, {})), '');
+  assert.doesNotMatch(html(h(CB.AwardHistory, { awards: [{ id: 'z', contractor: 'X', amount: 1, start: 'bad', end: 'bad' }] })), /mos\./);
+});
+
+test('Find work shows award history in Hi-Vis only, and only for projects that have one', () => {
+  const hv = html(h(CB.Workspace, { template: 'hivis', view: 'find_work' }));
+  assert.match(hv, /data-section="award_history"/);
+  assert.match(hv, /Marlow Builders/); // the lead that is open by default
+  assert.doesNotMatch(html(h(CB.Workspace, { template: 'blueprint', view: 'find_work' })), /data-section="award_history"/);
+  assert.equal(CB.sample.leads[3].awards, undefined);
 });
 
 test('viewForStage maps each lifecycle stage to a screen that exists', () => {

@@ -222,12 +222,8 @@ body { margin: 0; font-family: var(--font-sans); font-size: 15px; line-height: 2
 .cb-appnav-top a[aria-current] { color: var(--on-shell); box-shadow: inset 0 -3px 0 var(--brand); border-radius: 0; }
 .cb-scoreboard { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-12); align-items: end; padding: var(--space-8); }
 .cb-scoreboard h1 { font-weight: 900; }
-.cb-board { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--space-3); padding: var(--space-6) var(--space-8); align-items: start; }
-.cb-col { background: var(--surface-sunk); border-radius: var(--cb-r); padding: var(--space-2); display: grid; gap: var(--space-2); min-height: 120px; align-content: start; }
-.cb-col-h { display: flex; justify-content: space-between; padding: var(--space-1) var(--space-2); font-family: var(--font-display); font-weight: 800; font-size: 14px; text-transform: uppercase; letter-spacing: 0.04em; }
 .cb-top-layout { min-height: 100%; }
 .cb-top-layout .cb-main { width: 100%; max-width: 1440px; margin: 0 auto; }
-.cb-main .cb-board { padding: 0; }
 .cb-appnav-top a { white-space: nowrap; }
 .cb-appnav-top ul { flex-wrap: wrap; }
 .cb-opp .cb-btn { margin-top: var(--space-1); }
@@ -436,7 +432,6 @@ textarea.cb-input { height: auto !important; padding: var(--space-3) var(--space
   .cb-shell-layout { grid-template-columns: minmax(0, 1fr); }
   .cb-appnav ul { overflow-x: auto; flex-direction: row; }
   .cb-appnav-top, .cb-appnav-tabs { flex-wrap: wrap; gap: var(--space-3); padding: var(--space-3) var(--space-4); }
-  .cb-board { grid-auto-flow: column; grid-auto-columns: 78%; grid-template-columns: none; overflow-x: auto; padding: var(--space-4); }
   .cb-main, .cb-scoreboard { padding: var(--space-4); }
   .cb-app-field > div { padding-left: var(--space-4); padding-right: var(--space-4); }
   .cb-task { flex-direction: column; align-items: flex-start; }
@@ -472,4 +467,39 @@ textarea.cb-input { height: auto !important; padding: var(--space-3) var(--space
 [data-theme="hivis"] .cb-plan-price .cb-kpi-value, [data-theme="hivis"] .cb-message-code { font-weight: 500; }
 [data-theme="hivis"] .cb-trial { border: 2px solid var(--ink); background: var(--accent); color: var(--on-accent); }
 [data-theme="hivis"] .cb-trial .cb-btn-ghost { color: var(--on-accent); text-decoration: underline; }
-[data-theme="hivis"] .cb-stage-n { background: var(--brand); color: var(--on-brand); }
+
+/* Award history: each contractor's name opens that term's details beneath it. */
+.cb-awards { display: grid; gap: var(--space-2); padding-top: var(--space-3); border-top: 1px solid var(--line); }
+.cb-award { border-bottom: 1px solid var(--line); }
+.cb-award-line { padding: var(--space-2) 0; font-size: 14px; line-height: 22px; }
+.cb-award-name { font: inherit; font-weight: 600; color: var(--brand-ink); background: none; border: 0; padding: 0; cursor: pointer; text-align: left; text-decoration: underline; text-underline-offset: 3px; }
+.cb-award-name:hover { color: var(--ink); }
+.cb-award-name:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.cb-award-more { display: grid; grid-template-rows: 0fr; visibility: hidden; transition: grid-template-rows 200ms ease, visibility 0s linear 200ms; }
+.cb-award-open .cb-award-more { grid-template-rows: 1fr; visibility: visible; transition: grid-template-rows 200ms ease, visibility 0s; }
+.cb-award-inner { overflow: hidden; min-height: 0; }
+.cb-award-inner .cb-figures { margin: 0 0 var(--space-3); padding-left: var(--space-4); border-left: 3px solid var(--line-strong); }
+.cb-award-inner .cb-figures div:first-child { border-top: 0; }
+.cb-award-inner .cb-figures dd { text-align: right; font-size: 13px; line-height: 20px; }
+@media (prefers-reduced-motion: reduce) { .cb-award-more, .cb-award-open .cb-award-more { transition: none; } }
+.cb-jobs .cb-btn { justify-self: start; }
+
+/* Hi-Vis with yellow as the primary colour. Yellow has too little contrast with the light
+   grounds to stand alone, so every yellow fill there gets an ink edge, and yellow lines become ink. */
+[data-theme="hivis"] .cb-btn-primary, [data-theme="hivis"] .cb-chip-on, [data-theme="hivis"] .cb-phase-n { border: 2px solid var(--ink); }
+[data-theme="hivis"] .cb-band-shell .cb-btn-primary, [data-theme="hivis"] .cb-band-shell .cb-btn-accent { border-color: transparent; }
+[data-theme="hivis"] .cb-step-done::before, [data-theme="hivis"] .cb-step-current::before { background: var(--ink); }
+[data-theme="hivis"] .cb-step-done .cb-step-dot, [data-theme="hivis"] .cb-step-current .cb-step-dot { border-color: var(--ink); color: var(--ink); }
+[data-theme="hivis"] .cb-step-current .cb-step-dot { box-shadow: 0 0 0 4px var(--brand); }
+[data-theme="hivis"] .cb-steps-compact .cb-step-current .cb-step-label { color: var(--ink); }
+[data-theme="hivis"] .cb-progress-track { box-shadow: inset 0 0 0 1px var(--ink); }
+[data-theme="hivis"] .cb-progress-fill { box-shadow: inset -2px 0 0 var(--ink); }
+[data-theme="hivis"] .cb-bar-rev, [data-theme="hivis"] .cb-key-rev, [data-theme="hivis"] .cb-sched-work, [data-theme="hivis"] .cb-sched-legend .cb-sched-work { box-shadow: inset 0 0 0 1.5px var(--ink); }
+[data-theme="hivis"] .cb-pick-on .cb-opp { border-color: var(--ink); box-shadow: 0 0 0 3px var(--brand), 0 0 0 5px var(--ink); }
+[data-theme="hivis"] .cb-plan-on { border-color: var(--ink); box-shadow: 0 -8px 0 var(--brand), 0 -10px 0 var(--ink), var(--shadow-pop); }
+[data-theme="hivis"] .cb-choice-on { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
+[data-theme="hivis"] .cb-trio h2 { border-top-color: var(--ink); box-shadow: inset 0 6px 0 var(--brand); padding-top: var(--space-4) !important; }
+[data-theme="hivis"] .cb-onboard-steps .cb-current .cb-num, [data-theme="hivis"] .cb-onboard-steps .cb-done .cb-num { border-color: var(--ink); color: var(--ink); }
+[data-theme="hivis"] .cb-sched-today { box-shadow: inset 0 -3px 0 var(--ink); }
+[data-theme="hivis"] .cb-stage-n { background: var(--ink); color: var(--brand); }
+[data-theme="hivis"] .cb-notice-info { border-color: var(--ink); }

@@ -107,3 +107,27 @@ test('no page logs a console error', async ({ page }) => {
   }
   expect(problems).toEqual([]);
 });
+
+test('Hi-Vis: a contractor name opens and closes that award\'s details', async ({ page }) => {
+  test.skip(TEMPLATE !== 'hivis', 'award history is shown in Hi-Vis only');
+  await page.goto('/app/find-work');
+  const name = page.getByRole('button', { name: 'Marlow Builders' });
+  await expect(name).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByText('COA-21-088, Library east wing restroom remodel')).toBeHidden();
+  await name.click();
+  await expect(name).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByText('COA-21-088, Library east wing restroom remodel')).toBeVisible();
+  await expect(page.getByText('[5 mos.]')).toBeVisible();
+  await name.click();
+  await expect(page.getByText('COA-21-088, Library east wing restroom remodel')).toBeHidden();
+});
+
+test('Hi-Vis: a task on the overview opens the screen that deals with it', async ({ page }) => {
+  test.skip(TEMPLATE !== 'hivis', 'the task overview is the Hi-Vis home screen');
+  await page.goto('/app');
+  await page.getByRole('button', { name: 'Pay now' }).click();
+  await expect(page).toHaveURL(/\/app\/pay-run$/);
+  await page.goto('/app/welcome');
+  await expect(page.getByText('From SAM.gov, matched to your settings')).toBeVisible();
+  await expect(page.getByText('No jobs open.')).toBeVisible();
+});

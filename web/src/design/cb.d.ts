@@ -59,6 +59,9 @@ export interface MessagePageProps { template?: Template; kind?: 'trial_ended' | 
 export declare function MessagePage(props: MessagePageProps): React.ReactElement;
 export interface ArticlePageProps { template?: Template; kind?: 'terms' | 'privacy'; onNavigate?: (page: SitePage) => void }
 export declare function ArticlePage(props: ArticlePageProps): React.ReactElement;
+export interface Award { id: string; contractor: string; amount: number; /** YYYY-MM */ start: string; /** YYYY-MM */ end: string; contract?: string; agency?: string; scope?: string; offers?: string; changes?: string }
+export interface AwardHistoryProps { awards?: Award[]; title?: string; source?: string }
+export declare function AwardHistory(props: AwardHistoryProps): React.ReactElement | null;
 export interface ExperimentProps { name: string; variants: Record<string, React.ReactNode | ((key: string) => React.ReactNode)>; userId?: string; weights?: number[]; force?: string }
 export declare function Experiment(props: ExperimentProps): React.ReactElement | null;
 export interface LandingPageProps { template?: Template; /** Blueprint and Hi-Vis. */ onNavigate?: (page: SitePage, email?: string) => void }
@@ -90,3 +93,7 @@ export declare function payRunTotal(rows?: { payee: string; amount: number; stat
 export declare function setLinks(next: { page?: (page: SitePage) => string; view?: (view: WorkspaceView) => string }): void;
 export declare function modifiedClick(e?: { metaKey?: boolean; ctrlKey?: boolean; shiftKey?: boolean; altKey?: boolean; button?: number }): boolean;
 export declare function viewForStage(stage: string): WorkspaceView;
+export declare function parseYearMonth(s: unknown): { year: number; month: number } | null;
+export declare function formatYearMonth(s: unknown): string;
+export declare function monthsBetween(start: unknown, end: unknown): number | null;
+export declare function currentJobs<T extends { stage?: string }>(projects?: T[]): T[];

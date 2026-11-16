@@ -38,12 +38,12 @@
   --line-strong: #7d786b;
   --ink: #1a1813;
   --ink-muted: #595548;
-  --brand: #f25400;
-  --on-brand: #1a0d00;
-  --brand-ink: #a83800;
-  --brand-soft: #ffe3d1;
-  --accent: #ffd400;
-  --on-accent: #1a1813;
+  --brand: #ffd400;
+  --on-brand: #1a1813;
+  --brand-ink: #6b4e00;
+  --brand-soft: #fff3b8;
+  --accent: #f25400;
+  --on-accent: #1a0d00;
   --shell: #1a1813;
   --shell-raised: #2b2820;
   --on-shell: #f5f4f0;
@@ -54,7 +54,7 @@
   --warning-soft: #fdecc8;
   --danger: #b42318;
   --danger-soft: #fde4df;
-  --chart-revenue: #f25400;
+  --chart-revenue: #ffd400;
   --chart-expense: #1a1813;
   --chart-profit: #0b665f;
   --focus: #1a1813;

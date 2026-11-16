@@ -73,6 +73,20 @@ describe('Hi-Vis', () => {
     expect(html).not.toMatch(/href="#/);
   });
 
+  test('Hi-Vis find work shows award history; Blueprint does not', () => {
+    expect(renderToStaticMarkup(<WorkspaceScreen view="find_work" template="hivis" />)).toContain('data-section="award_history"');
+    expect(renderToStaticMarkup(<WorkspaceScreen view="find_work" template="blueprint" />)).not.toContain('data-section="award_history"');
+  });
+
+  test('Hi-Vis overview lists tasks and jobs; with nothing under way it lists matched projects', () => {
+    const home = renderToStaticMarkup(<WorkspaceScreen view="overview" template="hivis" />);
+    expect(home).toContain('data-section="tasks"');
+    expect(home).toContain('data-job="');
+    const fresh = renderToStaticMarkup(<WorkspaceScreen view="welcome" template="hivis" />);
+    expect(fresh).toContain('data-section="matches"');
+    expect(fresh).toContain('data-empty="jobs"');
+  });
+
   test('screens default to the template the site was built with', () => {
     expect(renderToStaticMarkup(<HomeScreen />)).toContain('data-template="blueprint"');
     expect(renderToStaticMarkup(<WorkspaceScreen view="overview" />)).toContain('data-template="blueprint"');

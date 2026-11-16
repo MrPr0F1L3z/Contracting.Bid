@@ -416,7 +416,7 @@ import * as React from 'react';
       return h('li', { key: t.id, className: 'cb-task', 'data-task': t.id },
         h('div', null, h(StageBadge, { stage: t.stage }), t.tone === 'danger' ? h(StatusPill, { tone: 'danger' }, 'Overdue') : null,
           h('h3', null, t.title), h('p', null, t.detail)),
-        h(Button, { variant: t.tone === 'danger' ? 'primary' : 'secondary', size: 'sm', trackId: 'task_' + t.id }, t.action));
+        h(Button, { variant: t.tone === 'danger' ? 'primary' : 'secondary', size: 'sm', trackId: 'task_' + t.id, onClick: p.onAction ? function () { p.onAction(t); } : undefined }, t.action));
     }));
   }
 
@@ -494,6 +494,57 @@ import * as React from 'react';
     return { count: picked.length, amount: picked.reduce(function (a, r) { return a + r.amount; }, 0) };
   }
   function payable(r) { return r.status === 'Approved' || r.status === 'Overdue'; }
+
+  var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  // Pure: "2022-01" → { year: 2022, month: 1 }, or null when it is not a real year and month.
+  function parseYearMonth(s) {
+    var m = /^(\d{4})-(\d{1,2})$/.exec(String(s == null ? '' : s).trim());
+    if (!m) return null;
+    var month = Number(m[2]);
+    return month >= 1 && month <= 12 ? { year: Number(m[1]), month: month } : null;
+  }
+  // Pure: "2022-01" → "Jan 2022".
+  function formatYearMonth(s) {
+    var d = parseYearMonth(s);
+    return d ? MONTHS[d.month - 1] + ' ' + d.year : '';
+  }
+  // Pure: whole months a term covers, counting both the first and the last month. Jan 2022 through Dec 2025 is 48.
+  function monthsBetween(start, end) {
+    var a = parseYearMonth(start), b = parseYearMonth(end);
+    if (!a || !b) return null;
+    var n = (b.year - a.year) * 12 + (b.month - a.month) + 1;
+    return n > 0 ? n : null;
+  }
+
+  var awardSeq = 0;
+  // Earlier awards for the same work. Each contractor's name opens the details of that term beneath it.
+  function AwardHistory(p) {
+    var awards = p.awards || [];
+    var base = React.useState(function () { return 'cb-award-' + (++awardSeq); })[0];
+    var open = React.useState({});
+    if (!awards.length) return null;
+    function toggle(id) {
+      var next = {};
+      for (var k in open[0]) next[k] = open[0][k];
+      next[id] = !next[id];
+      open[1](next);
+      track('click', { id: 'award_' + id, open: !!next[id] });
+    }
+    return h('div', { className: 'cb-awards', 'data-section': 'award_history' },
+      h('h3', { className: 'cb-label' }, p.title || 'Awarded before'),
+      h('ul', null, awards.map(function (a) {
+        var on = !!open[0][a.id], panel = base + '-' + a.id, months = monthsBetween(a.start, a.end);
+        var facts = [['Contract', a.contract], ['Awarded by', a.agency], ['What it covered', a.scope], ['Offers received', a.offers], ['Changes', a.changes]].filter(function (f) { return f[1] != null && f[1] !== ''; });
+        return h('li', { key: a.id, className: cx('cb-award', on && 'cb-award-open') },
+          h('p', { className: 'cb-award-line' },
+            h('button', { type: 'button', className: 'cb-award-name', 'aria-expanded': on, 'aria-controls': panel, 'data-track': 'award_' + a.id, onClick: function () { toggle(a.id); } }, a.contractor),
+            ' awarded ', h('span', { className: 'cb-num' }, formatMoney(a.amount)), ' starting ' + formatYearMonth(a.start) + ' through ' + formatYearMonth(a.end),
+            months ? h('span', { className: 'cb-num' }, ' [' + months + ' mos.]') : null),
+          h('div', { id: panel, className: 'cb-award-more', 'aria-hidden': !on }, h('div', { className: 'cb-award-inner' },
+            h('dl', { className: 'cb-figures' }, facts.map(function (f) { return h('div', { key: f[0] }, h('dt', null, f[0]), h('dd', null, String(f[1]))); })))));
+      })),
+      h('p', { className: 'cb-meta' }, p.source || 'Sample data. The award-history source is not connected yet.'));
+  }
 
   function ProgressBar(p) {
     var max = p.max > 0 ? p.max : 0;
@@ -585,6 +636,16 @@ import * as React from 'react';
     { id: 'l4', title: 'Water plant perimeter fencing', owner: 'Alder Water Authority', value: 72400, stage: 'find', match: 71, due: 'Bids due Dec 15', summary: 'Remove and replace 2,100 ft of chain-link security fence and two gates.', requirements: [
       { label: 'Site access', detail: 'Background checks for every worker on site.', pill: 'Lead time', tone: 'warning' },
       { label: 'Insurance', detail: 'Meets your current policy.', pill: 'Fits', tone: 'success' }] }
+  ];
+  sample.leads[0].awards = [
+    { id: 'a1', contractor: 'Cascade Paving & Grading', amount: 512400, start: '2023-04', end: '2023-09', contract: 'ART-23-0117, Transit yard paving, phase 1', agency: 'Alder Regional Transit', scope: 'Mill and overlay of the north lot, 71,000 sq ft, with striping.', offers: '5', changes: '2 change orders, final value $538,900' },
+    { id: 'a2', contractor: 'Hollis Asphalt Co.', amount: 298000, start: '2017-05', end: '2017-08', contract: 'ART-17-0042, Bus yard resurfacing', agency: 'Alder Regional Transit', scope: 'Overlay of drive lanes and replacement of two catch basins.', offers: '3', changes: 'None' }
+  ];
+  sample.leads[1].awards = [
+    { id: 'a3', contractor: 'Marlow Builders', amount: 131500, start: '2021-06', end: '2021-10', contract: 'COA-21-088, Library east wing restroom remodel', agency: 'City of Alder', scope: 'Two restrooms brought to accessibility standards; partitions, fixtures and tile.', offers: '4', changes: '1 change order, final value $136,200' }
+  ];
+  sample.leads[2].awards = [
+    { id: 'a4', contractor: 'Northside Mechanical', amount: 96200, start: '2014-10', end: '2014-12', contract: 'APD-14-031, Community center boiler no. 2', agency: 'Alder Parks District', scope: 'Replacement of one 1.5M BTU boiler and its controls.', offers: '2', changes: 'None' }
   ];
   sample.bid = {
     lines: [
@@ -697,6 +758,7 @@ import * as React from 'react';
             h('h2', { className: 'cb-h1' }, lead.title),
             h('p', { className: 'cb-meta' }, lead.owner + ' · ' + formatMoney(lead.value) + ' estimate · ' + lead.due),
             h('p', null, lead.summary),
+            p.tpl === 'hivis' && lead.awards && lead.awards.length ? h(AwardHistory, { awards: lead.awards }) : null,
             h('h3', { className: 'cb-label' }, 'What the documents require'),
             h('ul', { className: 'cb-reqs' }, lead.requirements.map(function (r) {
               return h('li', { key: r.label }, h('div', null, h('strong', null, r.label), h('span', null, r.detail)), h(StatusPill, { tone: r.tone }, r.pill));
@@ -1038,8 +1100,8 @@ import * as React from 'react';
   VIEW_PARENT.welcome = 'overview'; VIEW_PARENT.import_bid = 'bids'; VIEW_PARENT.sub_detail = 'subs_vendors'; VIEW_PARENT.pay_run = 'money'; VIEW_PARENT.change_order = 'projects';
 
 
-  // Hi-Vis keeps its own home screen: a scoreboard on the dark band, then every job on a board by stage.
-  var BOARD_COLUMNS = [['Find', ['find', 'research']], ['Bid', ['bid', 'award']], ['Build', ['subs', 'schedule']], ['Bill & pay', ['bill', 'pay']], ['Closeout', ['closeout']]];
+  // Hi-Vis keeps its scoreboard on the dark band; beneath it the home screen is what needs you today,
+  // your money, and your jobs. With nothing under way it shows matched projects instead.
   var STAGE_VIEW = { find: 'find_work', research: 'find_work', bid: 'bid_detail', award: 'award', subs: 'subs_vendors', schedule: 'project_detail', bill: 'pay_app', pay: 'pay_run', closeout: 'closeout' };
   // Pure: the screen a job on the board opens, by its stage.
   function viewForStage(stage) { return Object.prototype.hasOwnProperty.call(STAGE_VIEW, stage) ? STAGE_VIEW[stage] : 'projects'; }
@@ -1048,18 +1110,42 @@ import * as React from 'react';
       h('h1', { className: 'cb-display-lg' }, '1 bid due this week.', h('br'), '1 payment overdue.'),
       h(MoneySummary, { revenue: sample.revenue, expense: sample.expense, onShell: true, period: 'Last 6 months · sample data' }));
   }
-  function boardOverview(p) {
+  function jobCards(jobs, go) {
+    return h('div', { className: 'cb-jobs' }, jobs.map(function (x) {
+      return h('div', { key: x.id, className: 'cb-card', 'data-job': x.id }, h('h3', { className: 'cb-opp-title' }, x.title), h('p', { className: 'cb-opp-owner' }, x.owner + ' · ' + formatMoney(x.value)),
+        h(LifecycleStepper, { current: x.stage, compact: true }), h('p', { className: 'cb-meta' }, x.due),
+        go ? h('div', null, h(Button, { size: 'sm', trackId: 'job_' + x.id, onClick: function () { go(viewForStage(x.stage)); } }, 'Open')) : null);
+    }));
+  }
+  // Pure: jobs that are past bidding, the ones "Your jobs" lists.
+  function currentJobs(projects) { return (projects || []).filter(function (x) { return stageIndex(x.stage) >= stageIndex('bid'); }); }
+  function todayOverview(p, data) {
+    var d = data || { tasks: sample.tasks, jobs: currentJobs(sample.projects), revenue: sample.revenue, expense: sample.expense, months: sample.months, matches: sample.leads };
+    var hasWork = d.tasks.length > 0;
     return [
-      h('div', { className: 'cb-board', 'data-section': 'pipeline' }, BOARD_COLUMNS.map(function (c) {
-        var items = sample.projects.filter(function (x) { return c[1].indexOf(x.stage) >= 0; });
-        return h('div', { key: c[0], className: 'cb-col' },
-          h('div', { className: 'cb-col-h' }, h('span', null, c[0]), h('span', { className: 'cb-num' }, items.length)),
-          items.map(function (x) { return h(OpportunityCard, Object.assign({ key: x.id }, x, { match: undefined, action: 'Open', trackId: 'board_' + x.id, onAction: function () { p.go(viewForStage(x.stage)); } })); }));
-      })),
-      h('div', { className: 'cb-grid-2' }, mkChartCard(), mkPayCard(p.go))
+      h('div', { className: 'cb-grid-today' },
+        hasWork
+          ? h('div', { 'data-section': 'tasks' }, h(TaskList, { tasks: d.tasks, onAction: function (t) { p.go(viewForStage(t.stage)); } }))
+          : h('div', { className: 'cb-stack-sm', 'data-section': 'matches' },
+              h('div', { className: 'cb-card-h' }, 'Projects that fit', h('span', { className: 'cb-meta' }, 'From SAM.gov, matched to your settings')),
+              d.matches.length
+                ? d.matches.map(function (x) { return h(OpportunityCard, Object.assign({ key: x.id }, x, { action: 'Open brief', trackId: 'match_' + x.id, onAction: function () { p.go('find_work'); } })); })
+                : h('div', { className: 'cb-card' }, h(EmptyState, { id: 'matches', title: 'No matches yet', action: 'Check your settings', trackId: 'matches_settings', onAction: function () { p.go('settings'); } }, 'New projects are checked against your trades, distance and bonding limit every morning.'))),
+        h('div', { className: 'cb-stack' },
+          h('div', { className: 'cb-card', 'data-section': 'money' }, h('div', { className: 'cb-card-h' }, 'Your money'),
+            d.revenue > 0 || d.expense > 0 ? h(MoneySummary, { revenue: d.revenue, expense: d.expense, period: 'Last 6 months' }) : h(EmptyState, { id: 'numbers', title: 'Your numbers show up here' }, 'Revenue, expenses and profit appear once a job has a contract and its first cost.')),
+          d.months.length ? h('div', { className: 'cb-card', 'data-section': 'profit' }, h('div', { className: 'cb-card-h' }, 'Revenue and expenses', h('span', { className: 'cb-meta' }, 'Last 6 months')), h(ProfitChart, { data: d.months })) : null)),
+      h('div', { 'data-section': 'pipeline' }, h('h2', { className: 'cb-h2' }, 'Your jobs'),
+        d.jobs.length ? jobCards(d.jobs, p.go) : h('p', { className: 'cb-meta', 'data-empty': 'jobs' }, 'No jobs open.'))
     ];
   }
-  function viewFor(tpl, view) { return tpl === 'hivis' && view === 'overview' ? boardOverview : BLUEPRINT_VIEWS[view]; }
+  // A new account in Hi-Vis: the same screen with nothing under way, so matched projects fill it.
+  function todayEmpty(p) {
+    return [pageHead('Welcome. Here is work that fits.', sampleTag(), h(Button, { variant: 'primary', trackId: 'welcome_import', onClick: function () { p.go('import_bid'); } }, 'Import a bid'))]
+      .concat(todayOverview(p, { tasks: [], jobs: [], revenue: 0, expense: 0, months: [], matches: sample.leads }));
+  }
+  var HIVIS_VIEWS = { overview: todayOverview, welcome: todayEmpty };
+  function viewFor(tpl, view) { return tpl === 'hivis' && Object.prototype.hasOwnProperty.call(HIVIS_VIEWS, view) ? HIVIS_VIEWS[view] : BLUEPRINT_VIEWS[view]; }
 
   function FullWorkspace(p) {
     var tpl = p.template === 'hivis' ? 'hivis' : 'blueprint';
@@ -1070,7 +1156,7 @@ import * as React from 'react';
     var settings = h('a', { className: 'cb-appnav-foot', href: viewHref('settings'), 'aria-current': view === 'settings' ? 'page' : undefined, 'data-track': 'nav_settings', onClick: settingsClick }, 'Settings');
     var main = h('main', { className: 'cb-main' },
       view === 'settings' ? null : h('div', { className: 'cb-trial', 'data-section': 'trial', role: 'status' }, h('span', null, h('strong', null, '6 days left'), ' in your free trial. No card on file.'), h(Button, { variant: 'ghost', size: 'sm', trackId: 'trial_choose_plan', onClick: function () { go('settings'); } }, 'Choose a plan')),
-      h(ViewHost, { key: view, View: viewFor(tpl, view), go: go, onSignOut: p.onSignOut, onPlans: p.onPlans }));
+      h(ViewHost, { key: view, View: viewFor(tpl, view), go: go, tpl: tpl, onSignOut: p.onSignOut, onPlans: p.onPlans }));
     if (tpl === 'hivis') {
       return frame('app', tpl, h('div', { className: 'cb-top-layout', 'data-view': view },
         h('div', { className: 'cb-band-shell' },
@@ -1081,7 +1167,7 @@ import * as React from 'react';
     return frame('app', tpl, h('div', { className: 'cb-shell-layout', 'data-view': view }, h(AppNav, { orient: 'side', current: parent, onNavigate: go }, settings), main));
   }
   // Each screen mounts as its own component so its state resets when you leave it.
-  function ViewHost(p) { return h(React.Fragment, null, React.Children.toArray(p.View({ go: p.go, onSignOut: p.onSignOut, onPlans: p.onPlans }))); }
+  function ViewHost(p) { return h(React.Fragment, null, React.Children.toArray(p.View({ go: p.go, tpl: p.tpl, onSignOut: p.onSignOut, onPlans: p.onPlans }))); }
 
   function Workspace(p) {
     var tpl = templateOf(p);
@@ -1102,10 +1188,7 @@ import * as React from 'react';
             h('div', { className: 'cb-card', 'data-section': 'kpis' }, h('div', { className: 'cb-card-h' }, 'Your money'), h(MoneySummary, { revenue: rev, expense: exp, plain: true, period: 'Last 6 months' })),
             chartCard)),
         h('div', { key: 'jobs', 'data-section': 'pipeline' }, h('h2', { className: 'cb-h2' }, 'Your jobs'),
-          h('div', { className: 'cb-jobs' }, sample.projects.slice(2).map(function (x) {
-            return h('div', { key: x.id, className: 'cb-card' }, h('h3', { className: 'cb-opp-title' }, x.title), h('p', { className: 'cb-opp-owner' }, x.owner + ' · ' + formatMoney(x.value)),
-              h(LifecycleStepper, { current: x.stage, compact: true }), h('p', { className: 'cb-meta' }, x.due));
-          })))
+          jobCards(sample.projects.slice(2)))
       ]);
   }
 
@@ -1330,12 +1413,12 @@ import * as React from 'react';
 
   const CB = {
     Button: Button, SignupForm: SignupForm, StatusPill: StatusPill, StageBadge: StageBadge, LifecycleStepper: LifecycleStepper,
-    KpiTile: KpiTile, MoneySummary: MoneySummary, ProfitChart: ProfitChart, OpportunityCard: OpportunityCard, PayablesTable: PayablesTable, DataTable: DataTable, ProgressBar: ProgressBar, Checklist: Checklist, ScheduleBoard: ScheduleBoard, TextField: TextField, ChipSelect: ChipSelect, PricingPage: PricingPage, AuthPage: AuthPage, Onboarding: Onboarding, Prototype: Prototype, Notice: Notice, EmptyState: EmptyState, Dialog: Dialog, Skeleton: Skeleton, MessagePage: MessagePage, ArticlePage: ArticlePage,
+    KpiTile: KpiTile, MoneySummary: MoneySummary, ProfitChart: ProfitChart, OpportunityCard: OpportunityCard, PayablesTable: PayablesTable, DataTable: DataTable, ProgressBar: ProgressBar, Checklist: Checklist, ScheduleBoard: ScheduleBoard, TextField: TextField, ChipSelect: ChipSelect, PricingPage: PricingPage, AuthPage: AuthPage, Onboarding: Onboarding, Prototype: Prototype, Notice: Notice, EmptyState: EmptyState, Dialog: Dialog, Skeleton: Skeleton, MessagePage: MessagePage, ArticlePage: ArticlePage, AwardHistory: AwardHistory,
     Experiment: Experiment, LandingPage: LandingPage, Workspace: Workspace,
-    STAGES: STAGES, TEMPLATES: TEMPLATES, VIEWS: VIEWS, navId: navId, checklistProgress: checklistProgress, viewParent: viewParent, jobTotals: jobTotals, filterByStatus: filterByStatus, toggleChoice: toggleChoice, nextStep: nextStep, parseMoney: parseMoney, payRunTotal: payRunTotal, viewForStage: viewForStage, PAGES: PAGES, PLANS: PLANS, sample: sample,
+    STAGES: STAGES, TEMPLATES: TEMPLATES, VIEWS: VIEWS, navId: navId, checklistProgress: checklistProgress, viewParent: viewParent, jobTotals: jobTotals, filterByStatus: filterByStatus, toggleChoice: toggleChoice, nextStep: nextStep, parseMoney: parseMoney, payRunTotal: payRunTotal, viewForStage: viewForStage, monthsBetween: monthsBetween, formatYearMonth: formatYearMonth, parseYearMonth: parseYearMonth, currentJobs: currentJobs, PAGES: PAGES, PLANS: PLANS, sample: sample,
     assignVariant: assignVariant, hashString: hashString, formatMoney: formatMoney, formatPercent: formatPercent,
     profitMargin: profitMargin, stageIndex: stageIndex, cx: cx, track: track, setTracker: setTracker, setLinks: setLinks, modifiedClick: modifiedClick, useExperiment: useExperiment
   };
 
-export { Button, SignupForm, StatusPill, StageBadge, LifecycleStepper, KpiTile, MoneySummary, ProfitChart, OpportunityCard, PayablesTable, DataTable, ProgressBar, Checklist, ScheduleBoard, TextField, ChipSelect, PricingPage, AuthPage, Onboarding, Prototype, Notice, EmptyState, Dialog, Skeleton, MessagePage, ArticlePage, Experiment, LandingPage, Workspace, STAGES, TEMPLATES, VIEWS, navId, checklistProgress, viewParent, jobTotals, filterByStatus, toggleChoice, nextStep, parseMoney, payRunTotal, viewForStage, PAGES, PLANS, sample, assignVariant, hashString, formatMoney, formatPercent, profitMargin, stageIndex, cx, track, setTracker, setLinks, modifiedClick, useExperiment };
+export { Button, SignupForm, StatusPill, StageBadge, LifecycleStepper, KpiTile, MoneySummary, ProfitChart, OpportunityCard, PayablesTable, DataTable, ProgressBar, Checklist, ScheduleBoard, TextField, ChipSelect, PricingPage, AuthPage, Onboarding, Prototype, Notice, EmptyState, Dialog, Skeleton, MessagePage, ArticlePage, AwardHistory, Experiment, LandingPage, Workspace, STAGES, TEMPLATES, VIEWS, navId, checklistProgress, viewParent, jobTotals, filterByStatus, toggleChoice, nextStep, parseMoney, payRunTotal, viewForStage, monthsBetween, formatYearMonth, parseYearMonth, currentJobs, PAGES, PLANS, sample, assignVariant, hashString, formatMoney, formatPercent, profitMargin, stageIndex, cx, track, setTracker, setLinks, modifiedClick, useExperiment };
 export default CB;
