@@ -528,3 +528,5 @@ textarea.cb-input { height: auto !important; padding: var(--space-3) var(--space
 .cb-auto-you .cb-auto-list li { border-top-color: var(--shell-raised); padding-left: var(--space-6); font-weight: 600; }
 .cb-auto-you .cb-auto-list li::before { left: 0; top: 20px; width: 8px; height: 8px; border: 0; transform: none; background: var(--accent); }
 @media (max-width: 820px) { .cb-auto { grid-template-columns: minmax(0, 1fr); } }
+/* A titled group with no frame of its own; its contents carry the edges. */
+.cb-plain { min-width: 0; }

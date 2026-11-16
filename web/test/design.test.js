@@ -513,7 +513,8 @@ test('Hi-Vis overview: scoreboard, then what needs you, job stats and your jobs'
   assert.match(out, /cb-scoreboard/);
   assert.ok(out.indexOf('data-section="trial"') < out.indexOf('data-section="tasks"'));
   assert.equal((out.match(/data-task="/g) || []).length, CB.sample.tasks.length);
-  assert.match(out, /data-section="job_stats".*data-section="profit".*data-section="pipeline"/s);
+  assert.match(out, /data-section="profit".*data-section="job_stats".*data-section="pipeline"/s);
+  assert.match(out, /<div class="cb-plain" data-section="job_stats">/, 'job stats has no card frame');
   assert.doesNotMatch(out, /Your money/);
   assert.equal((out.match(/class="cb-scoreboard"/g) || []).length, 1, 'money figures appear once, in the scoreboard');
   assert.equal((out.match(/data-job="/g) || []).length, CB.currentJobs(CB.sample.projects).length);

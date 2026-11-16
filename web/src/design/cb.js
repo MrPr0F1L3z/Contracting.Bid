@@ -1207,7 +1207,7 @@ import * as React from 'react';
       return h('button', { key: id, type: 'button', className: cx('cb-stat', tone && 'cb-stat-' + tone), 'data-stat': id, 'data-track': 'stat_' + id, onClick: function () { track('click', { id: 'stat_' + id }); p.go(view); } },
         h('span', { className: 'cb-stat-value' }, value), h('span', { className: 'cb-stat-label' }, label), h('span', { className: 'cb-stat-hint' }, hint));
     }
-    return h('div', { className: 'cb-card', 'data-section': 'job_stats' }, h('div', { className: 'cb-card-h' }, 'Job stats', p.sample ? sampleTag() : null),
+    return h('div', { className: 'cb-plain', 'data-section': 'job_stats' }, h('div', { className: 'cb-card-h' }, 'Job stats', p.sample ? sampleTag() : null),
       h('div', { className: 'cb-stats' },
         stat('quotes', s.quotesOutstanding, 'Quotes outstanding', s.quotesReceived + ' of ' + s.quotesRequested + ' requested are in', 'bid_detail'),
         stat('bids', s.bidsAwaiting, s.bidsAwaiting === 1 ? 'Bid awaiting a response' : 'Bids awaiting a response', s.bidsAwaiting ? formatMoney(s.bidsAwaitingUsd) + ' placed' : 'None placed', 'bids'),
@@ -1227,8 +1227,8 @@ import * as React from 'react';
                 ? d.matches.map(function (x) { return h(OpportunityCard, Object.assign({ key: x.id }, x, { action: 'Open brief', trackId: 'match_' + x.id, onAction: function () { p.go('find_work'); } })); })
                 : h('div', { className: 'cb-card' }, h(EmptyState, { id: 'matches', title: 'No matches yet', action: 'Check your settings', trackId: 'matches_settings', onAction: function () { p.go('settings'); } }, 'New projects are checked against your trades, distance and bonding limit every morning.'))),
         h('div', { className: 'cb-stack' },
-          h(JobStatsCard, { stats: d.stats, go: p.go, sample: true }),
-          d.months.length ? h('div', { className: 'cb-card', 'data-section': 'profit' }, h('div', { className: 'cb-card-h' }, 'Revenue and expenses', h('span', { className: 'cb-meta' }, 'Last 6 months')), h(ProfitChart, { data: d.months })) : null)),
+          d.months.length ? h('div', { className: 'cb-card', 'data-section': 'profit' }, h('div', { className: 'cb-card-h' }, 'Revenue and expenses', h('span', { className: 'cb-meta' }, 'Last 6 months')), h(ProfitChart, { data: d.months })) : null,
+          h(JobStatsCard, { stats: d.stats, go: p.go, sample: true }))),
       h('div', { 'data-section': 'pipeline' }, h('h2', { className: 'cb-h2' }, 'Your jobs'),
         d.jobs.length ? jobCards(d.jobs, p.go) : h('p', { className: 'cb-meta', 'data-empty': 'jobs' }, 'No jobs open.'))
     ];
