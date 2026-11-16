@@ -291,8 +291,8 @@ import * as React from 'react';
       { payee: 'Summit Roofing Supply', role: 'Vendor', project: 'City Hall roof', due: 'Nov 6', amount: 9120, status: 'Paid' }
     ],
     tasks: [
-      { id: 't1', stage: 'bid', title: 'Submit the County Road 12 bid', detail: 'Due Thursday 2:00 pm. Two sub quotes still open.', action: 'Review bid' },
-      { id: 't2', stage: 'pay', title: 'Pay Brightline Electric', detail: '$21,750.00 was due Nov 12. Lien waiver is on file.', action: 'Pay now', tone: 'danger' },
+      { id: 't1', stage: 'bid', title: 'Submit the County Road 12 bid', detail: 'Due Thursday 2:00 pm. Two sub quotes still open.', action: 'Review bid', urgent: true },
+      { id: 't2', stage: 'pay', title: 'Pay Brightline Electric', detail: '$21,750.00 was due Nov 12. Lien waiver is on file.', action: 'Pay now', tone: 'danger', urgent: true },
       { id: 't3', stage: 'bill', title: 'Send pay application 3', detail: 'City Hall roof, $79,500.00. Schedule of values is filled in.', action: 'Send to client' },
       { id: 't4', stage: 'closeout', title: 'Collect closeout documents', detail: 'Fire Station 4: two warranties still missing from subs.', action: 'Request documents' }
     ]
@@ -543,7 +543,7 @@ import * as React from 'react';
           h('div', { id: panel, className: 'cb-award-more', 'aria-hidden': !on }, h('div', { className: 'cb-award-inner' },
             h('dl', { className: 'cb-figures' }, facts.map(function (f) { return h('div', { key: f[0] }, h('dt', null, f[0]), h('dd', null, String(f[1]))); })))));
       })),
-      h('p', { className: 'cb-meta' }, p.source || 'Sample data. The award-history source is not connected yet.'));
+      h('p', { className: 'cb-meta' }, p.source || 'Source: USAspending.gov, which lists federal awards. Sample rows; the live feed is not connected yet.'));
   }
 
   function ProgressBar(p) {
@@ -1119,8 +1119,33 @@ import * as React from 'react';
   }
   // Pure: jobs that are past bidding, the ones "Your jobs" lists.
   function currentJobs(projects) { return (projects || []).filter(function (x) { return stageIndex(x.stage) >= stageIndex('bid'); }); }
+  // Pure: the counts the job stats card shows. Every input is optional, so an empty account gives zeros.
+  function jobStats(d) {
+    var quotes = (d && d.quotes) || [], bids = (d && d.bids) || [], jobs = (d && d.jobs) || [], tasks = (d && d.tasks) || [];
+    var received = quotes.filter(function (q) { return q.status === 'Received'; }).length;
+    var waiting = bids.filter(function (b) { return b.status === 'Submitted'; });
+    return {
+      quotesRequested: quotes.length, quotesReceived: received, quotesOutstanding: quotes.length - received,
+      bidsAwaiting: waiting.length, bidsAwaitingUsd: waiting.reduce(function (a, b) { return a + (b.amount || 0); }, 0),
+      awardedJobs: jobs.length,
+      urgent: tasks.filter(function (t) { return t.urgent === true || t.tone === 'danger'; }).length
+    };
+  }
+  function JobStatsCard(p) {
+    var s = p.stats;
+    function stat(id, value, label, hint, view, tone) {
+      return h('button', { key: id, type: 'button', className: cx('cb-stat', tone && 'cb-stat-' + tone), 'data-stat': id, 'data-track': 'stat_' + id, onClick: function () { track('click', { id: 'stat_' + id }); p.go(view); } },
+        h('span', { className: 'cb-stat-value' }, value), h('span', { className: 'cb-stat-label' }, label), h('span', { className: 'cb-stat-hint' }, hint));
+    }
+    return h('div', { className: 'cb-card', 'data-section': 'job_stats' }, h('div', { className: 'cb-card-h' }, 'Job stats', p.sample ? sampleTag() : null),
+      h('div', { className: 'cb-stats' },
+        stat('quotes', s.quotesOutstanding, 'Quotes outstanding', s.quotesReceived + ' of ' + s.quotesRequested + ' requested are in', 'bid_detail'),
+        stat('bids', s.bidsAwaiting, s.bidsAwaiting === 1 ? 'Bid awaiting a response' : 'Bids awaiting a response', s.bidsAwaiting ? formatMoney(s.bidsAwaitingUsd) + ' placed' : 'None placed', 'bids'),
+        stat('awarded', s.awardedJobs, s.awardedJobs === 1 ? 'Awarded job' : 'Awarded jobs', s.awardedJobs ? 'Under contract or closing out' : 'None yet', 'projects'),
+        stat('urgent', s.urgent, 'Need a response ASAP', s.urgent ? 'Due or overdue this week' : 'Nothing pressing', s.urgent ? 'pay_run' : 'overview', s.urgent ? 'danger' : null)));
+  }
   function todayOverview(p, data) {
-    var d = data || { tasks: sample.tasks, jobs: currentJobs(sample.projects), revenue: sample.revenue, expense: sample.expense, months: sample.months, matches: sample.leads };
+    var d = data || { tasks: sample.tasks, jobs: currentJobs(sample.projects), months: sample.months, matches: sample.leads, stats: jobStats({ quotes: sample.bid.quotes, bids: sample.bids, jobs: sample.jobs, tasks: sample.tasks }) };
     var hasWork = d.tasks.length > 0;
     return [
       h('div', { className: 'cb-grid-today' },
@@ -1132,8 +1157,7 @@ import * as React from 'react';
                 ? d.matches.map(function (x) { return h(OpportunityCard, Object.assign({ key: x.id }, x, { action: 'Open brief', trackId: 'match_' + x.id, onAction: function () { p.go('find_work'); } })); })
                 : h('div', { className: 'cb-card' }, h(EmptyState, { id: 'matches', title: 'No matches yet', action: 'Check your settings', trackId: 'matches_settings', onAction: function () { p.go('settings'); } }, 'New projects are checked against your trades, distance and bonding limit every morning.'))),
         h('div', { className: 'cb-stack' },
-          h('div', { className: 'cb-card', 'data-section': 'money' }, h('div', { className: 'cb-card-h' }, 'Your money'),
-            d.revenue > 0 || d.expense > 0 ? h(MoneySummary, { revenue: d.revenue, expense: d.expense, period: 'Last 6 months' }) : h(EmptyState, { id: 'numbers', title: 'Your numbers show up here' }, 'Revenue, expenses and profit appear once a job has a contract and its first cost.')),
+          h(JobStatsCard, { stats: d.stats, go: p.go, sample: true }),
           d.months.length ? h('div', { className: 'cb-card', 'data-section': 'profit' }, h('div', { className: 'cb-card-h' }, 'Revenue and expenses', h('span', { className: 'cb-meta' }, 'Last 6 months')), h(ProfitChart, { data: d.months })) : null)),
       h('div', { 'data-section': 'pipeline' }, h('h2', { className: 'cb-h2' }, 'Your jobs'),
         d.jobs.length ? jobCards(d.jobs, p.go) : h('p', { className: 'cb-meta', 'data-empty': 'jobs' }, 'No jobs open.'))
@@ -1142,7 +1166,7 @@ import * as React from 'react';
   // A new account in Hi-Vis: the same screen with nothing under way, so matched projects fill it.
   function todayEmpty(p) {
     return [pageHead('Welcome. Here is work that fits.', sampleTag(), h(Button, { variant: 'primary', trackId: 'welcome_import', onClick: function () { p.go('import_bid'); } }, 'Import a bid'))]
-      .concat(todayOverview(p, { tasks: [], jobs: [], revenue: 0, expense: 0, months: [], matches: sample.leads }));
+      .concat(todayOverview(p, { tasks: [], jobs: [], months: [], matches: sample.leads, stats: jobStats() }));
   }
   var HIVIS_VIEWS = { overview: todayOverview, welcome: todayEmpty };
   function viewFor(tpl, view) { return tpl === 'hivis' && Object.prototype.hasOwnProperty.call(HIVIS_VIEWS, view) ? HIVIS_VIEWS[view] : BLUEPRINT_VIEWS[view]; }
@@ -1415,10 +1439,10 @@ import * as React from 'react';
     Button: Button, SignupForm: SignupForm, StatusPill: StatusPill, StageBadge: StageBadge, LifecycleStepper: LifecycleStepper,
     KpiTile: KpiTile, MoneySummary: MoneySummary, ProfitChart: ProfitChart, OpportunityCard: OpportunityCard, PayablesTable: PayablesTable, DataTable: DataTable, ProgressBar: ProgressBar, Checklist: Checklist, ScheduleBoard: ScheduleBoard, TextField: TextField, ChipSelect: ChipSelect, PricingPage: PricingPage, AuthPage: AuthPage, Onboarding: Onboarding, Prototype: Prototype, Notice: Notice, EmptyState: EmptyState, Dialog: Dialog, Skeleton: Skeleton, MessagePage: MessagePage, ArticlePage: ArticlePage, AwardHistory: AwardHistory,
     Experiment: Experiment, LandingPage: LandingPage, Workspace: Workspace,
-    STAGES: STAGES, TEMPLATES: TEMPLATES, VIEWS: VIEWS, navId: navId, checklistProgress: checklistProgress, viewParent: viewParent, jobTotals: jobTotals, filterByStatus: filterByStatus, toggleChoice: toggleChoice, nextStep: nextStep, parseMoney: parseMoney, payRunTotal: payRunTotal, viewForStage: viewForStage, monthsBetween: monthsBetween, formatYearMonth: formatYearMonth, parseYearMonth: parseYearMonth, currentJobs: currentJobs, PAGES: PAGES, PLANS: PLANS, sample: sample,
+    STAGES: STAGES, TEMPLATES: TEMPLATES, VIEWS: VIEWS, navId: navId, checklistProgress: checklistProgress, viewParent: viewParent, jobTotals: jobTotals, filterByStatus: filterByStatus, toggleChoice: toggleChoice, nextStep: nextStep, parseMoney: parseMoney, payRunTotal: payRunTotal, viewForStage: viewForStage, monthsBetween: monthsBetween, formatYearMonth: formatYearMonth, parseYearMonth: parseYearMonth, currentJobs: currentJobs, jobStats: jobStats, PAGES: PAGES, PLANS: PLANS, sample: sample,
     assignVariant: assignVariant, hashString: hashString, formatMoney: formatMoney, formatPercent: formatPercent,
     profitMargin: profitMargin, stageIndex: stageIndex, cx: cx, track: track, setTracker: setTracker, setLinks: setLinks, modifiedClick: modifiedClick, useExperiment: useExperiment
   };
 
-export { Button, SignupForm, StatusPill, StageBadge, LifecycleStepper, KpiTile, MoneySummary, ProfitChart, OpportunityCard, PayablesTable, DataTable, ProgressBar, Checklist, ScheduleBoard, TextField, ChipSelect, PricingPage, AuthPage, Onboarding, Prototype, Notice, EmptyState, Dialog, Skeleton, MessagePage, ArticlePage, AwardHistory, Experiment, LandingPage, Workspace, STAGES, TEMPLATES, VIEWS, navId, checklistProgress, viewParent, jobTotals, filterByStatus, toggleChoice, nextStep, parseMoney, payRunTotal, viewForStage, monthsBetween, formatYearMonth, parseYearMonth, currentJobs, PAGES, PLANS, sample, assignVariant, hashString, formatMoney, formatPercent, profitMargin, stageIndex, cx, track, setTracker, setLinks, modifiedClick, useExperiment };
+export { Button, SignupForm, StatusPill, StageBadge, LifecycleStepper, KpiTile, MoneySummary, ProfitChart, OpportunityCard, PayablesTable, DataTable, ProgressBar, Checklist, ScheduleBoard, TextField, ChipSelect, PricingPage, AuthPage, Onboarding, Prototype, Notice, EmptyState, Dialog, Skeleton, MessagePage, ArticlePage, AwardHistory, Experiment, LandingPage, Workspace, STAGES, TEMPLATES, VIEWS, navId, checklistProgress, viewParent, jobTotals, filterByStatus, toggleChoice, nextStep, parseMoney, payRunTotal, viewForStage, monthsBetween, formatYearMonth, parseYearMonth, currentJobs, jobStats, PAGES, PLANS, sample, assignVariant, hashString, formatMoney, formatPercent, profitMargin, stageIndex, cx, track, setTracker, setLinks, modifiedClick, useExperiment };
 export default CB;

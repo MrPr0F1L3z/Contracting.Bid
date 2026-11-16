@@ -118,6 +118,7 @@ test('Hi-Vis: a contractor name opens and closes that award\'s details', async (
   await expect(name).toHaveAttribute('aria-expanded', 'true');
   await expect(page.getByText('COA-21-088, Library east wing restroom remodel')).toBeVisible();
   await expect(page.getByText('[5 mos.]')).toBeVisible();
+  await expect(page.getByText(/Source: USAspending\.gov/)).toBeVisible();
   await name.click();
   await expect(page.getByText('COA-21-088, Library east wing restroom remodel')).toBeHidden();
 });
@@ -127,6 +128,9 @@ test('Hi-Vis: a task on the overview opens the screen that deals with it', async
   await page.goto('/app');
   await page.getByRole('button', { name: 'Pay now' }).click();
   await expect(page).toHaveURL(/\/app\/pay-run$/);
+  await page.goto('/app');
+  await page.getByRole('button', { name: /Bid awaiting a response/ }).click();
+  await expect(page).toHaveURL(/\/app\/bids$/);
   await page.goto('/app/welcome');
   await expect(page.getByText('From SAM.gov, matched to your settings')).toBeVisible();
   await expect(page.getByText('No jobs open.')).toBeVisible();

@@ -508,12 +508,14 @@ for (const view of CB.VIEWS) {
   });
 }
 
-test('Hi-Vis overview: scoreboard, then what needs you, your money and your jobs', () => {
+test('Hi-Vis overview: scoreboard, then what needs you, job stats and your jobs', () => {
   const out = html(h(CB.Workspace, { template: 'hivis' }));
   assert.match(out, /cb-scoreboard/);
   assert.ok(out.indexOf('data-section="trial"') < out.indexOf('data-section="tasks"'));
   assert.equal((out.match(/data-task="/g) || []).length, CB.sample.tasks.length);
-  assert.match(out, /data-section="money".*data-section="profit".*data-section="pipeline"/s);
+  assert.match(out, /data-section="job_stats".*data-section="profit".*data-section="pipeline"/s);
+  assert.doesNotMatch(out, /Your money/);
+  assert.equal((out.match(/class="cb-scoreboard"/g) || []).length, 1, 'money figures appear once, in the scoreboard');
   assert.equal((out.match(/data-job="/g) || []).length, CB.currentJobs(CB.sample.projects).length);
   assert.doesNotMatch(out, /cb-board|data-section="matches"/);
   assert.doesNotMatch(html(h(CB.Workspace, { template: 'hivis', view: 'money' })), /cb-scoreboard/);
@@ -525,10 +527,37 @@ test('Hi-Vis with nothing under way shows matched projects and leaves jobs empty
   assert.match(out, /data-section="matches"/);
   assert.match(out, /From SAM\.gov, matched to your settings/);
   assert.equal((out.match(/data-track="match_/g) || []).length, CB.sample.leads.length);
-  assert.match(out, /data-empty="numbers"/);
+  assert.match(out, /data-stat="quotes"[^>]*><span class="cb-stat-value">0</);
+  assert.match(out, /Nothing pressing/);
   assert.match(out, /data-empty="jobs">No jobs open\./);
   assert.doesNotMatch(out, /data-task=|data-job=|data-section="profit"/);
   assert.match(html(h(CB.Workspace, { template: 'blueprint', view: 'welcome' })), /data-section="start"/);
+});
+
+test('jobStats counts quotes, bids awaiting a response, awarded jobs and urgent items', () => {
+  const s = CB.sample;
+  assert.deepEqual(CB.jobStats({ quotes: s.bid.quotes, bids: s.bids, jobs: s.jobs, tasks: s.tasks }), {
+    quotesRequested: 4, quotesReceived: 2, quotesOutstanding: 2, bidsAwaiting: 1, bidsAwaitingUsd: 143000, awardedJobs: 4, urgent: 2,
+  });
+  const zero = { quotesRequested: 0, quotesReceived: 0, quotesOutstanding: 0, bidsAwaiting: 0, bidsAwaitingUsd: 0, awardedJobs: 0, urgent: 0 };
+  assert.deepEqual(CB.jobStats(), zero);
+  assert.deepEqual(CB.jobStats({}), zero);
+  assert.equal(CB.jobStats({ tasks: [{ tone: 'danger' }, { urgent: true }, { urgent: 'yes' }, {}] }).urgent, 2);
+  assert.equal(CB.jobStats({ bids: [{ status: 'Submitted' }, { status: 'Submitted', amount: 5 }, { status: 'Won', amount: 9 }] }).bidsAwaitingUsd, 5);
+});
+
+test('the job stats card shows the four counts, each a tracked control', () => {
+  const out = html(h(CB.Workspace, { template: 'hivis' }));
+  assert.match(out, /data-stat="quotes"[^>]*><span class="cb-stat-value">2<\/span><span class="cb-stat-label">Quotes outstanding<\/span><span class="cb-stat-hint">2 of 4 requested are in</);
+  assert.match(out, /data-stat="bids"[^>]*><span class="cb-stat-value">1<\/span><span class="cb-stat-label">Bid awaiting a response<\/span><span class="cb-stat-hint">\$143,000 placed</);
+  assert.match(out, /data-stat="awarded"[^>]*><span class="cb-stat-value">4<\/span><span class="cb-stat-label">Awarded jobs</);
+  assert.match(out, /class="cb-stat cb-stat-danger" data-stat="urgent"[^>]*><span class="cb-stat-value">2<\/span><span class="cb-stat-label">Need a response ASAP</);
+  assert.equal((out.match(/data-track="stat_/g) || []).length, 4);
+});
+
+test('the award history names its source', () => {
+  assert.match(html(h(CB.AwardHistory, { awards: CB.sample.leads[0].awards })), /Source: USAspending\.gov/);
+  assert.match(html(h(CB.AwardHistory, { awards: CB.sample.leads[0].awards, source: 'Other' })), />Other</);
 });
 
 test('currentJobs keeps jobs from the bid stage on', () => {

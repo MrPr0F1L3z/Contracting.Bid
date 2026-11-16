@@ -82,6 +82,8 @@ describe('Hi-Vis', () => {
     const home = renderToStaticMarkup(<WorkspaceScreen view="overview" template="hivis" />);
     expect(home).toContain('data-section="tasks"');
     expect(home).toContain('data-job="');
+    expect(home).toContain('data-section="job_stats"');
+    expect(home).not.toContain('Your money');
     const fresh = renderToStaticMarkup(<WorkspaceScreen view="welcome" template="hivis" />);
     expect(fresh).toContain('data-section="matches"');
     expect(fresh).toContain('data-empty="jobs"');

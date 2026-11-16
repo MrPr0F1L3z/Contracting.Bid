@@ -503,3 +503,17 @@ textarea.cb-input { height: auto !important; padding: var(--space-3) var(--space
 [data-theme="hivis"] .cb-sched-today { box-shadow: inset 0 -3px 0 var(--ink); }
 [data-theme="hivis"] .cb-stage-n { background: var(--ink); color: var(--brand); }
 [data-theme="hivis"] .cb-notice-info { border-color: var(--ink); }
+
+/* Job stats: four counts, each one opens the screen behind it. */
+.cb-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+.cb-stat { display: grid; gap: 2px; text-align: left; padding: var(--space-3) var(--space-4); background: var(--surface); color: var(--ink); border: 1px solid var(--line-strong); border-radius: var(--cb-r); font: inherit; cursor: pointer; min-width: 0; }
+.cb-stat:hover { border-color: var(--ink); background: var(--bg); }
+.cb-stat:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.cb-stat-value { font-family: var(--font-mono); font-size: 32px; line-height: 36px; font-weight: 500; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.cb-stat-label { font-family: var(--font-display); font-size: 15px; line-height: 20px; font-weight: 600; text-transform: var(--cb-case); }
+.cb-stat-hint { font-size: 13px; line-height: 20px; color: var(--ink-muted); }
+.cb-stat-danger { border-color: var(--danger); background: var(--danger-soft); }
+.cb-stat-danger .cb-stat-value, .cb-stat-danger .cb-stat-label { color: var(--danger); }
+.cb-stat-danger .cb-stat-hint { color: var(--ink); }
+[data-theme="hivis"] .cb-stat { border-width: 2px; border-color: var(--ink); }
+[data-theme="hivis"] .cb-stat-danger { border-color: var(--danger); }
