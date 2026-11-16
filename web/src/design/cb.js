@@ -375,7 +375,7 @@ import * as React from 'react';
         h('div', { key: 'top', className: 'cb-band-shell' },
           h(MarketingNav, { onShell: true, go: p.onNavigate, current: 'home' }),
           section('hero', 'cb-hero cb-hero-poster', [
-            h('h1', { key: 'h', className: 'cb-display' }, 'Find it. Bid it.', h('br'), 'Provide it. ', h('em', null, 'Get paid.')),
+            h('h1', { key: 'h', className: 'cb-display' }, 'Find it. Bid it.', h('br'), 'Do it. ', h('em', null, 'Get paid.')),
             h('p', { key: 'p', className: 'cb-lead' }, 'AI does the office work, from the first bid alert to the final lien waiver. You approve the decisions that matter. More jobs, a leaner office, more of every contract kept.'),
             h(SignupForm, { key: 'f', onShell: true, ctaVariant: 'accent', trackId: 'hero_signup', onSubmit: function (email) { if (p.onNavigate) p.onNavigate('signup', email); } })
           ]),
