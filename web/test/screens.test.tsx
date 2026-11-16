@@ -95,6 +95,21 @@ describe('Hi-Vis', () => {
     expect(fresh).not.toContain('data-section="matches"');
   });
 
+  test('Overview is the welcome screen until the account has started, in both templates', () => {
+    for (const template of ['blueprint', 'hivis'] as const) {
+      const fresh = renderToStaticMarkup(<WorkspaceScreen view="overview" template={template} started={false} />);
+      expect(fresh).toContain('Welcome. Pick a place to start.');
+      expect(fresh).not.toContain('data-section="job_stats"');
+      expect(renderToStaticMarkup(<WorkspaceScreen view="overview" template={template} />)).not.toContain('data-section="start"');
+    }
+  });
+
+  test('Hi-Vis overview hides the job stats row while every count is zero', () => {
+    const zero = { quotesRequested: 0, quotesReceived: 0, quotesOutstanding: 0, bidsAwaiting: 0, bidsAwaitingUsd: 0, awardedJobs: 0, urgent: 0 };
+    expect(renderToStaticMarkup(<WorkspaceScreen view="overview" template="hivis" stats={zero} />)).not.toContain('data-section="job_stats"');
+    expect(renderToStaticMarkup(<WorkspaceScreen view="overview" template="hivis" stats={{ ...zero, quotesRequested: 1, quotesOutstanding: 1 }} />)).toContain('data-section="job_stats"');
+  });
+
   test('Find work shows the listings it is given, grouped by fit', () => {
     const listings = [{ id: 'z1', title: 'Passed in', owner: 'Agency', value: 5, source: 'Some feed', fit: { ideal: false, reasons: ['Too far'] }, requirements: [] }];
     const html = renderToStaticMarkup(<WorkspaceScreen view="find_work" template="hivis" listings={listings} />);

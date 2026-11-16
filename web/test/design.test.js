@@ -539,6 +539,51 @@ test('Hi-Vis welcome is the same screen as Blueprint: three ways to start, setup
   assert.equal(main(out), main(html(h(CB.Workspace, { template: 'blueprint', view: 'welcome' }))));
 });
 
+test('hasJobStats is false until there is something to count', () => {
+  assert.equal(CB.hasJobStats(CB.jobStats()), false);
+  assert.equal(CB.hasJobStats(null), false);
+  assert.equal(CB.hasJobStats(undefined), false);
+  assert.equal(CB.hasJobStats({}), false);
+  assert.equal(CB.hasJobStats(CB.jobStats({ quotes: [{ status: 'Requested' }] })), true);
+  assert.equal(CB.hasJobStats(CB.jobStats({ bids: [{ status: 'Submitted', amount: 1 }] })), true);
+  assert.equal(CB.hasJobStats(CB.jobStats({ jobs: [{}] })), true);
+  assert.equal(CB.hasJobStats(CB.jobStats({ tasks: [{ urgent: true }] })), true);
+  assert.equal(CB.hasJobStats(CB.jobStats({ bids: [{ status: 'Draft' }] })), false, 'a draft bid is not a stat yet');
+});
+
+test('accountStarted is true once there is a bid, a project or a job', () => {
+  assert.equal(CB.accountStarted(), false);
+  assert.equal(CB.accountStarted(null), false);
+  assert.equal(CB.accountStarted({}), false);
+  assert.equal(CB.accountStarted({ bids: [], projects: [], jobs: [] }), false);
+  assert.equal(CB.accountStarted({ bids: 'x' }), false);
+  assert.equal(CB.accountStarted({ bids: [{}] }), true);
+  assert.equal(CB.accountStarted({ projects: [{}] }), true);
+  assert.equal(CB.accountStarted({ jobs: [{}] }), true);
+});
+
+for (const template of ['blueprint', 'hivis']) {
+  test(template + ': Overview is the welcome screen until the account has started', () => {
+    const fresh = html(h(CB.Workspace, { template, started: false }));
+    assert.match(fresh, /Welcome\. Pick a place to start\./);
+    assert.match(fresh, /data-section="start"/);
+    assert.doesNotMatch(fresh, /cb-scoreboard|data-section="job_stats"|data-job=|data-kpi=/);
+    assert.match(fresh, /href="#overview" aria-current="page"/);
+    assert.doesNotMatch(html(h(CB.Workspace, { template, started: true })), /data-section="start"/);
+    assert.doesNotMatch(html(h(CB.Workspace, { template })), /data-section="start"/);
+    assert.doesNotMatch(html(h(CB.Workspace, { template, started: false, view: 'bids' })), /data-section="start"/, 'only Overview changes');
+  });
+}
+
+test('Hi-Vis overview leaves the job stats row out while every count is zero', () => {
+  const none = html(h(CB.Workspace, { template: 'hivis', stats: CB.jobStats() }));
+  assert.doesNotMatch(none, /data-section="job_stats"|data-stat=/);
+  assert.match(none, /data-section="pipeline".*data-section="job_detail"/s);
+  const one = html(h(CB.Workspace, { template: 'hivis', stats: CB.jobStats({ quotes: [{ status: 'Requested' }] }) }));
+  assert.match(one, /data-section="job_stats"/);
+  assert.match(one, /data-stat="quotes"[^>]*><span class="cb-stat-value">1</);
+});
+
 test('jobDetail takes money from the contract record, falls back to the bid value, and picks the job\'s tasks', () => {
   const s = CB.sample;
   const roof = s.projects.find((x) => x.id === 'p5');

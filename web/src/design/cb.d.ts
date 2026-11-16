@@ -68,7 +68,7 @@ export interface ExperimentProps { name: string; variants: Record<string, React.
 export declare function Experiment(props: ExperimentProps): React.ReactElement | null;
 export interface LandingPageProps { template?: Template; /** Blueprint and Hi-Vis. */ onNavigate?: (page: SitePage, email?: string) => void }
 export declare function LandingPage(props: LandingPageProps): React.ReactElement;
-export interface WorkspaceProps { template?: Template; /** Blueprint and Hi-Vis: the opening screen. */ view?: WorkspaceView; /** Blueprint and Hi-Vis. */ onNavigate?: (view: WorkspaceView) => void; onPlans?: () => void; onSignOut?: () => void; /** Find work's listings, already ranked: best fits (`fit.ideal`) first. Defaults to the sample set. */ listings?: Listing[] }
+export interface WorkspaceProps { template?: Template; /** Blueprint and Hi-Vis: the opening screen. */ view?: WorkspaceView; /** Blueprint and Hi-Vis. */ onNavigate?: (view: WorkspaceView) => void; onPlans?: () => void; onSignOut?: () => void; /** Find work's listings, already ranked: best fits (`fit.ideal`) first. Defaults to the sample set. */ listings?: Listing[]; /** False for an account with no bid, project or job yet: Overview shows the welcome screen. Defaults to true. */ started?: boolean; /** Hi-Vis overview counts. The row is left out while every count is zero. Defaults to the sample set. */ stats?: JobStats }
 export declare function Workspace(props: WorkspaceProps): React.ReactElement;
 export interface TrackPayload { event: string; props: Record<string, unknown>; at: number }
 export declare function assignVariant(userId: string, experiment: string, variants: string[], weights?: number[]): string | null;
@@ -99,6 +99,9 @@ export declare function parseYearMonth(s: unknown): { year: number; month: numbe
 export declare function formatYearMonth(s: unknown): string;
 export declare function monthsBetween(start: unknown, end: unknown): number | null;
 export declare function currentJobs<T extends { stage?: string }>(projects?: T[]): T[];
+export interface JobStats { quotesRequested: number; quotesReceived: number; quotesOutstanding: number; bidsAwaiting: number; bidsAwaitingUsd: number; awardedJobs: number; urgent: number }
+export declare function hasJobStats(stats?: Partial<JobStats> | null): boolean;
+export declare function accountStarted(account?: { bids?: unknown[]; projects?: unknown[]; jobs?: unknown[] } | null): boolean;
 export declare function jobDetail(project?: { title?: string; stage?: string; value?: number; due?: string } | null, jobs?: { title?: string; contract?: number; billed?: number; cost?: number; next?: string }[], tasks?: { stage?: string }[]): { underContract: boolean; contract: number; billed: number; cost: number; profit: number; margin: number | null; next: string; tasks: { stage?: string }[] } | null;
 export declare function jobStats(data?: { quotes?: { status?: string }[]; bids?: { status?: string; amount?: number }[]; jobs?: unknown[]; tasks?: { urgent?: boolean; tone?: string }[] }): { quotesRequested: number; quotesReceived: number; quotesOutstanding: number; bidsAwaiting: number; bidsAwaitingUsd: number; awardedJobs: number; urgent: number };
 export declare function splitByFit<T extends { fit?: { ideal?: boolean } }>(list?: (T | null)[]): { ideal: T[]; rest: T[] };

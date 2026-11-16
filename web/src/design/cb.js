@@ -1201,6 +1201,11 @@ import * as React from 'react';
       urgent: tasks.filter(function (t) { return t.urgent === true || t.tone === 'danger'; }).length
     };
   }
+  // Pure: is there anything to count yet? False for a new account, so the stats row stays off the page.
+  function hasJobStats(s) { return !!s && ['quotesRequested', 'bidsAwaiting', 'awardedJobs', 'urgent'].some(function (k) { return s[k] > 0; }); }
+  // Pure: has this account begun? True once it has a bid (started or imported), a saved project or a job.
+  // Until then Overview shows the welcome screen.
+  function accountStarted(a) { return !!a && ['bids', 'projects', 'jobs'].some(function (k) { return Array.isArray(a[k]) && a[k].length > 0; }); }
   function JobStatsCard(p) {
     var s = p.stats;
     function stat(id, value, label, hint, view, tone) {
@@ -1254,10 +1259,10 @@ import * as React from 'react';
   // Hi-Vis home. With no job under way it is the welcome screen; with at least one it is job stats in a row,
   // then the jobs with the selected one's details beside them, then what needs you and the money chart.
   function todayOverview(p, data) {
-    var d = data || { tasks: sample.tasks, jobs: currentJobs(sample.projects), records: sample.jobs, months: sample.months, stats: jobStats({ quotes: sample.bid.quotes, bids: sample.bids, jobs: sample.jobs, tasks: sample.tasks }) };
+    var d = data || { tasks: sample.tasks, jobs: currentJobs(sample.projects), records: sample.jobs, months: sample.months, stats: p.stats || jobStats({ quotes: sample.bid.quotes, bids: sample.bids, jobs: sample.jobs, tasks: sample.tasks }) };
     if (!d.jobs || !d.jobs.length) return BLUEPRINT_VIEWS.welcome(p);
     return [
-      h(JobStatsCard, { stats: d.stats, go: p.go, sample: true, row: true }),
+      hasJobStats(d.stats) ? h(JobStatsCard, { stats: d.stats, go: p.go, sample: true, row: true }) : null,
       h('div', { 'data-section': 'pipeline' }, h('h2', { className: 'cb-h2' }, 'Your jobs'), h(JobBrowser, { jobs: d.jobs, records: d.records, tasks: d.tasks, go: p.go })),
       h('div', { className: 'cb-grid-today' },
         d.tasks.length ? h('div', { 'data-section': 'tasks' }, h('h2', { className: 'cb-h2' }, 'Needs you today'), h(TaskList, { tasks: d.tasks, onAction: function (t) { p.go(viewForStage(t.stage)); } })) : null,
@@ -1272,23 +1277,25 @@ import * as React from 'react';
     var tpl = p.template === 'hivis' ? 'hivis' : 'blueprint';
     var st = React.useState(VIEWS.indexOf(p.view) >= 0 ? p.view : 'overview');
     var view = st[0], parent = viewParent(view);
+    // An account that has not begun gets the welcome screen wherever the overview would be.
+    var fresh = view === 'overview' && p.started === false;
     function go(v) { if (VIEWS.indexOf(v) < 0) return; st[1](v); if (p.onNavigate) p.onNavigate(v); }
     function settingsClick(e) { if (modifiedClick(e)) return; e.preventDefault(); track('click', { id: 'nav_settings' }); go('settings'); }
     var settings = h('a', { className: 'cb-appnav-foot', href: viewHref('settings'), 'aria-current': view === 'settings' ? 'page' : undefined, 'data-track': 'nav_settings', onClick: settingsClick }, 'Settings');
     var main = h('main', { className: 'cb-main' },
       view === 'settings' ? null : h('div', { className: 'cb-trial', 'data-section': 'trial', role: 'status' }, h('span', null, h('strong', null, '6 days left'), ' in your free trial. No card on file.'), h(Button, { variant: 'ghost', size: 'sm', trackId: 'trial_choose_plan', onClick: function () { go('settings'); } }, 'Choose a plan')),
-      h(ViewHost, { key: view, View: viewFor(tpl, view), go: go, tpl: tpl, listings: p.listings, onSignOut: p.onSignOut, onPlans: p.onPlans }));
+      h(ViewHost, { key: view, View: fresh ? BLUEPRINT_VIEWS.welcome : viewFor(tpl, view), go: go, tpl: tpl, listings: p.listings, stats: p.stats, onSignOut: p.onSignOut, onPlans: p.onPlans }));
     if (tpl === 'hivis') {
       return frame('app', tpl, h('div', { className: 'cb-top-layout', 'data-view': view },
         h('div', { className: 'cb-band-shell' },
           h(AppNav, { orient: 'top', current: parent, onNavigate: go }, settings, h(Button, { variant: 'accent', size: 'sm', trackId: 'new_bid', onClick: function () { go('bids'); } }, 'New bid')),
-          view === 'overview' ? h(Scoreboard) : null),
+          view === 'overview' && !fresh ? h(Scoreboard) : null),
         main));
     }
     return frame('app', tpl, h('div', { className: 'cb-shell-layout', 'data-view': view }, h(AppNav, { orient: 'side', current: parent, onNavigate: go }, settings), main));
   }
   // Each screen mounts as its own component so its state resets when you leave it.
-  function ViewHost(p) { return h(React.Fragment, null, React.Children.toArray(p.View({ go: p.go, tpl: p.tpl, listings: p.listings, onSignOut: p.onSignOut, onPlans: p.onPlans }))); }
+  function ViewHost(p) { return h(React.Fragment, null, React.Children.toArray(p.View({ go: p.go, tpl: p.tpl, listings: p.listings, stats: p.stats, onSignOut: p.onSignOut, onPlans: p.onPlans }))); }
 
   function Workspace(p) {
     var tpl = templateOf(p);
@@ -1536,10 +1543,10 @@ import * as React from 'react';
     Button: Button, SignupForm: SignupForm, StatusPill: StatusPill, StageBadge: StageBadge, LifecycleStepper: LifecycleStepper,
     KpiTile: KpiTile, MoneySummary: MoneySummary, ProfitChart: ProfitChart, OpportunityCard: OpportunityCard, PayablesTable: PayablesTable, DataTable: DataTable, ProgressBar: ProgressBar, Checklist: Checklist, ScheduleBoard: ScheduleBoard, TextField: TextField, ChipSelect: ChipSelect, PricingPage: PricingPage, AuthPage: AuthPage, Onboarding: Onboarding, Prototype: Prototype, Notice: Notice, EmptyState: EmptyState, Dialog: Dialog, Skeleton: Skeleton, MessagePage: MessagePage, ArticlePage: ArticlePage, AwardHistory: AwardHistory,
     Experiment: Experiment, LandingPage: LandingPage, Workspace: Workspace,
-    STAGES: STAGES, TEMPLATES: TEMPLATES, VIEWS: VIEWS, navId: navId, checklistProgress: checklistProgress, viewParent: viewParent, jobTotals: jobTotals, filterByStatus: filterByStatus, toggleChoice: toggleChoice, nextStep: nextStep, parseMoney: parseMoney, payRunTotal: payRunTotal, viewForStage: viewForStage, jobDetail: jobDetail, monthsBetween: monthsBetween, formatYearMonth: formatYearMonth, parseYearMonth: parseYearMonth, currentJobs: currentJobs, splitByFit: splitByFit, jobStats: jobStats, PAGES: PAGES, PLANS: PLANS, sample: sample,
+    STAGES: STAGES, TEMPLATES: TEMPLATES, VIEWS: VIEWS, navId: navId, checklistProgress: checklistProgress, viewParent: viewParent, jobTotals: jobTotals, filterByStatus: filterByStatus, toggleChoice: toggleChoice, nextStep: nextStep, parseMoney: parseMoney, payRunTotal: payRunTotal, viewForStage: viewForStage, jobDetail: jobDetail, hasJobStats: hasJobStats, accountStarted: accountStarted, monthsBetween: monthsBetween, formatYearMonth: formatYearMonth, parseYearMonth: parseYearMonth, currentJobs: currentJobs, splitByFit: splitByFit, jobStats: jobStats, PAGES: PAGES, PLANS: PLANS, sample: sample,
     assignVariant: assignVariant, hashString: hashString, formatMoney: formatMoney, formatPercent: formatPercent,
     profitMargin: profitMargin, stageIndex: stageIndex, cx: cx, track: track, setTracker: setTracker, setLinks: setLinks, modifiedClick: modifiedClick, useExperiment: useExperiment
   };
 
-export { Button, SignupForm, StatusPill, StageBadge, LifecycleStepper, KpiTile, MoneySummary, ProfitChart, OpportunityCard, PayablesTable, DataTable, ProgressBar, Checklist, ScheduleBoard, TextField, ChipSelect, PricingPage, AuthPage, Onboarding, Prototype, Notice, EmptyState, Dialog, Skeleton, MessagePage, ArticlePage, AwardHistory, Experiment, LandingPage, Workspace, STAGES, TEMPLATES, VIEWS, navId, checklistProgress, viewParent, jobTotals, filterByStatus, toggleChoice, nextStep, parseMoney, payRunTotal, viewForStage, jobDetail, monthsBetween, formatYearMonth, parseYearMonth, currentJobs, splitByFit, jobStats, PAGES, PLANS, sample, assignVariant, hashString, formatMoney, formatPercent, profitMargin, stageIndex, cx, track, setTracker, setLinks, modifiedClick, useExperiment };
+export { Button, SignupForm, StatusPill, StageBadge, LifecycleStepper, KpiTile, MoneySummary, ProfitChart, OpportunityCard, PayablesTable, DataTable, ProgressBar, Checklist, ScheduleBoard, TextField, ChipSelect, PricingPage, AuthPage, Onboarding, Prototype, Notice, EmptyState, Dialog, Skeleton, MessagePage, ArticlePage, AwardHistory, Experiment, LandingPage, Workspace, STAGES, TEMPLATES, VIEWS, navId, checklistProgress, viewParent, jobTotals, filterByStatus, toggleChoice, nextStep, parseMoney, payRunTotal, viewForStage, jobDetail, hasJobStats, accountStarted, monthsBetween, formatYearMonth, parseYearMonth, currentJobs, splitByFit, jobStats, PAGES, PLANS, sample, assignVariant, hashString, formatMoney, formatPercent, profitMargin, stageIndex, cx, track, setTracker, setLinks, modifiedClick, useExperiment };
 export default CB;
