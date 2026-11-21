@@ -4,7 +4,7 @@ import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DashboardServer, parseDecision, summarize } from "../src/dashboard/server.js";
+import { DashboardServer, WORKSPACE_LIVE_RUNS, isJobEvent, parseDecision, summarize } from "../src/dashboard/server.js";
 import { RunLauncher } from "../src/dashboard/launcher.js";
 import { DASHBOARD_HTML } from "../src/dashboard/page.js";
 import { MAX_FAILURES, MemoryUserStore, newUser, totpCode, type DashboardUser } from "../src/dashboard/auth.js";
@@ -105,6 +105,56 @@ describe("DashboardServer without HTTP", () => {
   });
 });
 
+describe("isJobEvent", () => {
+  it("drops model and tool chatter and keeps everything else", () => {
+    for (const type of ["model_call", "tool_call", "tool_result", "task_finished"]) expect(isJobEvent({ type })).toBe(false);
+    for (const type of ["bid_submitted", "approval_requested", "run_finished", "something_new"]) expect(isJobEvent({ type })).toBe(true);
+  });
+});
+
+describe("DashboardServer workspace view", () => {
+  const e = (runId: string, type: string, payload: Record<string, unknown> = {}) => ({ runId, simTime: 0, type, actor: "world", payload });
+  it("shows a run as a job while it is going, without the chatter", async () => {
+    const d = new DashboardServer({ runsDir: "nowhere", users: new MemoryUserStore() });
+    const log = d.tee();
+    expect(await d.workspace()).toEqual({ jobs: [], stats: expect.objectContaining({ urgent: 0, awardedJobs: 0 }) });
+    log.append(e("r1", "opportunity_found", { noticeId: "STUB-E02", title: "Paint" }));
+    for (let i = 0; i < 600; i++) log.append(e("r1", "tool_call", { i }));
+    log.append(e("r1", "bid_submitted", { priceUsd: 100 }));
+    log.append(e("r1", "approval_requested", { approvalId: 1, gate: "sign_contract", summary: "Sign" }));
+    const w = await d.workspace();
+    expect(w.jobs).toHaveLength(1);
+    expect(w.jobs[0]).toMatchObject({ runId: "r1", noticeId: "STUB-E02", stage: "award", bidUsd: 100, agency: expect.any(String) });
+    expect(w.jobs[0]!.tasks.map((t) => t.gate)).toEqual(["sign_contract"]);
+    expect(w.stats).toMatchObject({ bidsAwaiting: 1, bidsAwaitingUsd: 100, urgent: 1 });
+    d.clearLive();
+    expect((await d.workspace()).jobs).toHaveLength(1);
+  });
+  it("keeps only the latest runs in memory", async () => {
+    const d = new DashboardServer({ runsDir: "nowhere", users: new MemoryUserStore() });
+    const log = d.tee();
+    for (let i = 0; i < WORKSPACE_LIVE_RUNS + 2; i++) log.append(e(`r${i}`, "bid_submitted", { priceUsd: 1 }));
+    const ids = (await d.workspace()).jobs.map((j) => j.runId);
+    expect(ids).toHaveLength(WORKSPACE_LIVE_RUNS);
+    expect(ids[0]).toBe("r2");
+  });
+  it("adds saved runs, preferring the live copy of a run in both", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "dash-"));
+    try {
+      await writeFile(join(dir, "old.json"), JSON.stringify({ runId: "old", events: [{ ...e("old", "contract_signed", { priceUsd: 50, contractDays: 5 }), seq: 1 }, { ...e("other", "bid_submitted", { priceUsd: 9 }), seq: 2 }, null, { ...e("old", "tool_call"), seq: 3 }] }));
+      await writeFile(join(dir, "both.json"), JSON.stringify({ runId: "both", events: [{ ...e("both", "bid_submitted", { priceUsd: 1 }), seq: 1 }] }));
+      await writeFile(join(dir, "bare.json"), JSON.stringify({ runId: "bare" }));
+      const d = new DashboardServer({ runsDir: dir, users: new MemoryUserStore() });
+      d.tee().append(e("both", "bid_submitted", { priceUsd: 2 }));
+      const w = await d.workspace();
+      expect(w.jobs.map((j) => [j.runId, j.bidUsd, j.contractUsd])).toEqual([["both", 2, null], ["old", null, 50]]);
+      expect(w.stats).toMatchObject({ bidsAwaiting: 1, awardedJobs: 1 });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("DashboardServer reports", () => {
   let dir: string;
   beforeEach(async () => {
@@ -194,6 +244,28 @@ describe("DashboardServer over HTTP (functional)", () => {
     await rm(dir, { recursive: true, force: true });
   });
 
+  it("serves its fonts without sign-in, cacheable, and nothing else under /fonts", async () => {
+    const res = await fetch(base + "/fonts/archivo-800.woff2");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("font/woff2");
+    expect(res.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(Buffer.from(await res.arrayBuffer()).subarray(0, 4).toString("latin1")).toBe("wOF2");
+    for (const path of ["/fonts/", "/fonts/nope.woff2", "/fonts/..%2Fpackage.json", "/fonts/archivo-800.woff2/x"]) {
+      expect((await fetch(base + path)).status, path).toBe(404);
+    }
+    expect((await fetch(base + "/fonts/archivo-800.woff2", { method: "POST" })).status).not.toBe(200);
+  });
+
+  it("shows an approval's structured details to the signed-in owner", async () => {
+    const details = { title: "Roof replacement", subtitle: "GSA · STUB-X01", facts: [{ label: "Location", value: "Denver, CO" }], notes: [{ label: "Scope", text: "Replace the roof." }] };
+    void d.approver("run-9")({ id: 1, gate: "pursue_opportunity", requestedBy: "president#1", summary: "Pursue it.", details, status: "pending", autoApproved: false });
+    const c = await signedIn();
+    const state = (await c.call("/api/state")).body as { pending: Array<{ details?: unknown; runId?: string }> };
+    expect(state.pending).toHaveLength(1);
+    expect(state.pending[0]).toMatchObject({ details, runId: "run-9" });
+  });
+
   it("serves the page to anyone, with strict security headers", async () => {
     const r = await client(base).call("/");
     expect(r.status).toBe(200);
@@ -253,6 +325,15 @@ describe("DashboardServer over HTTP (functional)", () => {
     expect(await post({ "x-csrf-token": "wrong" })).toMatchObject({ status: 403, body: { error: "Missing or wrong CSRF token" } });
     expect(d.pendingRequests()).toHaveLength(1);
     expect(await post({ origin: base })).toMatchObject({ status: 200 });
+  });
+
+  it("serves the workspace view to a signed-in user only", async () => {
+    expect((await client(base).call("/api/workspace")).status).toBe(401);
+    const c = await signedIn();
+    d.tee().append({ runId: "live", simTime: 0, type: "bid_submitted", actor: "pm#3", payload: { priceUsd: 70 } });
+    const r = await c.call("/api/workspace");
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({ jobs: [{ runId: "live", bidUsd: 70, stage: "award" }], stats: { bidsAwaiting: 1 } });
   });
 
   it("lists and reads saved runs once signed in", async () => {

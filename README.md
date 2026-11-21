@@ -14,6 +14,8 @@ A general contracting company run by AI agents. The agents fill the company's ro
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the code layout.
 
+The customer-facing website and workspace are a separate package in [`web/`](web/README.md). It is a front end on sample data. The owner dashboard uses the same workspace layout and fills it from run data (`GET /api/workspace`); the site itself does not read it yet.
+
 ## Requirements
 
 - Node.js 22 and pnpm (`corepack enable`)
@@ -108,6 +110,8 @@ Some approvals cover several items: all the subcontracts on a job, or a payment 
 
 ## Owner dashboard
 
+The dashboard is laid out as the Blueprint workspace of the customer site: Overview, Find work, Bids, Projects, Subs & vendors, Schedule, Money and Closeout in the sidebar, each filled from your runs (live runs as they go, plus the latest saved ones). Click a job for its stages, quotes, schedule, problems, hired team and your decisions. **Settings**, at the foot of the sidebar, holds the owner's tools as tabs: **Approvals**, **Live log**, **Past runs** and **Start a run**. Overview and the Settings link show how many approvals are waiting.
+
 First create your login. You need a password of at least 12 characters and an authenticator app on your phone (1Password, Google Authenticator, Authy or similar):
 
 ```sh
@@ -134,7 +138,7 @@ Five wrong sign-ins lock that name and that address out for 15 minutes. A sessio
 
 ### Keep the dashboard running
 
-`pnpm sim serve` keeps the dashboard up and adds a **Start a run** tab: pick `closeout`, `job`, `bid` or `hiring`, optionally a job, a seed and Force award, and start it. Its approvals show in the Approvals tab and its events in the Live log, and it is saved to the database. Runs go side by side, up to `MAX_PARALLEL_RUNS` at once (default 3), each with its own `RUN_BUDGET_USD` cap, so three runs can spend up to three times that. Each approval card and live log line names its run. Tick "Scripted models" for a free dry run. It needs `DATABASE_URL`.
+`pnpm sim serve` keeps the dashboard up and adds a **Start a run** tab to Settings: pick `closeout`, `job`, `bid` or `hiring`, optionally a job, a seed and Force award, and start it. Its approvals show in the Approvals tab and its events in the Live log, and it is saved to the database. Runs go side by side, up to `MAX_PARALLEL_RUNS` at once (default 3), each with its own `RUN_BUDGET_USD` cap, so three runs can spend up to three times that. Each approval card and live log line names its run. Tick "Scripted models" for a free dry run. It needs `DATABASE_URL`.
 
 If the service stops in the middle of a run (a restart, a crash, `docker compose stop`), the run is marked **interrupted** in the database and shows that way under Past runs, with the events it logged. It is not resumed. Runs started in a terminal are never marked.
 
@@ -167,6 +171,10 @@ With `DATABASE_URL` set, every `hiring`, `bid`, `job` and `closeout` run is save
 - New migrations in `db/migrations/` are applied automatically when a run starts (and by the `migrate` service on `docker compose up`). They are applied together in one transaction: if any fails, none are, the database is left as it was, and the run does not start. CI applies them to a fresh Postgres on every pull request.
 - `pnpm db migrate` applies them without starting a run. `pnpm db status` shows which are applied.
 - `pnpm db export RUN_ID` writes one run's report to `runs/RUN_ID.json`, to share it. The dashboard's Past runs tab shows the run IDs.
+- `pnpm db delete` removes saved runs with their events, approvals and agents. It only lists what it would remove until you add `--yes`, and it cannot be undone, so export a run first if you want a copy.
+  - `pnpm db delete RUN_ID` removes one run.
+  - `pnpm db delete --before now` removes every run so far. `--before 14:30:00` means that time today, `--before 261115` (or `2026-11-15`) the start of that day, and `--before 261115 14:30:00` that day at that time. Times are this machine's local time.
+  - Runs that have not finished are left alone unless you add `--include-unfinished`.
 - `pnpm db import` copies your existing `runs/*.json` reports and `data/dashboard-users.json` logins into the database. It skips anything already there, so it is safe to run twice.
 
 The sim runs on this machine, so `DATABASE_URL` uses `localhost`, not the container name `db`. Postgres only listens on 127.0.0.1. Remove `DATABASE_URL` to run without a database; reports are then written to `runs/` as before.

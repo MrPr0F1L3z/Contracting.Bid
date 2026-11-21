@@ -20,14 +20,16 @@ The full POC spec lives in the project's Claude Doc, "Contracting.Bid POC: Proce
 | `src/events/` | Append-only event log, in memory during a run |
 | `src/db/` | The `Db` interface over `pg`, the migration runner, and the Postgres stores for runs, events and logins |
 | `src/budget/` | Per-call cost and budgets that warn at 80% and stop at 100% |
-| `src/approvals/` | The nine owner approval gates and the approval queue, with batch approvals that can be approved in full or item by item |
+| `src/approvals/` | The nine owner approval gates and the approval queue, with batch approvals that can be approved in full or item by item. `details.ts` builds each request's structured details (title, labelled facts, notes) so the dashboard can lay it out; the `summary` sentence stays for the terminal, event log and database |
 | `src/opportunities/` | The `OpportunitySource` interface, the stub source of made-up solicitations (two each at easy, moderate and complex), the seeded picker, and a coverage planner that spreads runs across complexity levels |
 | `src/agents/` | Agent records and the hiring policy, the agent tool loop (budgets, event logging, Claude's thinking passed back unchanged), and the hiring tools |
 | `src/gpu/` | Pauses the owner's listed GPU processes before a run and always resumes them afterwards; checks vLLM lanes and speed and restarts it when needed |
-| `src/dashboard/` | The owner dashboard: a local web page for approvals, the live event log and saved reports |
+| `src/dashboard/` | The owner dashboard: the Blueprint workspace layout from `web/src/design` (colours copied and checked by a test), filled from run data, with approvals, the live event log, saved reports and starting runs as tabs of Settings. `views.ts` holds the browser-side helpers that shape workspace data into screens. It serves its own fonts from `/fonts/` |
+| `src/workspace/` | Turns a run's event log into what the customer workspace shows: one job per run with its stage, quotes, bid, contract, money and the approvals waiting on the owner |
 | `src/cli/` | `pnpm gpu` (vLLM check, ensure, load test), `pnpm sim` (hiring, bench, bid, job, closeout, dashboard, user) and `pnpm db` (migrate, status, import) |
 | `db/migrations/` | Postgres schema for the data model, applied in order when a run starts (or by `pnpm db migrate`) |
 | `test/` | Unit tests for every function, plus functional tests that apply the schema to an embedded Postgres |
+| `web/` | The customer-facing site and workspace (Next.js). A separate pnpm workspace package with its own tests and CI job; front end only, on sample data. See `web/README.md` |
 
 ## Determinism and replay
 
@@ -87,6 +89,12 @@ Each stage function (`bidStage`, `jobStage`) returns where it stopped, so each s
 - **Transport:** HTTP on 127.0.0.1 only, or HTTPS from its own certificate, or behind Caddy (`deploy/Caddyfile`, compose profile `public`), which gets a Let's Encrypt certificate. HSTS is on whenever it is reached over HTTPS.
 - The page sets a strict content security policy and builds the DOM with `textContent` only, so agent text cannot inject script.
 - `UserStore` is an interface: `PgUserStore` (the `dashboard_users` table) when `DATABASE_URL` is set, a mode-600 JSON file otherwise.
+
+## Workspace view
+
+`projectJob` (`src/workspace/projection.ts`) reads one run's events in order and returns a `WorkspaceJob`: its lifecycle stage (the web workspace's nine, Find to Closeout), quotes and the ones selected, bid, contract, change orders, schedule, problems, money in and out, and the approvals the owner has not answered, each under the stage its gate belongs to (`GATE_STAGE`). The event log is the only input, so the same function serves a run in progress, a finished run and a replay, and it never sees the simulated world's hidden costs. A stage only moves forward.
+
+The dashboard keeps each run's job events (everything but model and tool chatter) for the latest `WORKSPACE_LIVE_RUNS` runs. `GET /api/workspace` (signed-in only) returns those jobs plus the latest saved runs, with the job stats counts. Each job carries its stage, quotes, bid, contract, schedule, problems, money, pending tasks, the hired team, answered decisions, the seed and the injected problems. The dashboard page reads it to fill the workspace screens and refreshes it shortly after job events stream in. The web workspace does not read it yet.
 
 ## Database
 

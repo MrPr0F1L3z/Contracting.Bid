@@ -31,6 +31,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
+      # test/dashboardBrowser.test.ts drives the owner dashboard in Chromium.
+      - run: pnpm exec playwright-core install --with-deps chromium
       # Tests use stub models and saved fixtures only. CI never calls Claude, vLLM or SAM.gov.
       - run: pnpm test
         env:
@@ -41,3 +43,27 @@ jobs:
       - run: pnpm db migrate && pnpm db migrate && pnpm db status
         env:
           DATABASE_URL: postgres://test:test@localhost:5432/deploy
+
+  # The customer-facing site (web/). Front end only: no database, no model calls.
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+      # Deploy check: the production build must succeed, and the browser tests run against it.
+      - run: pnpm build
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm e2e
+      # The Hi-Vis template is the same site in the other design; build it and run the same browser tests.
+      - run: pnpm build:hivis
+      - run: pnpm e2e:hivis

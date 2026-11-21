@@ -1,0 +1,3 @@
+# The simulation lives at the repo root; the customer-facing site is its own package.
+packages:
+  - web

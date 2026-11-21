@@ -1,0 +1,37 @@
+{
+  "name": "@contracting-bid/web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Contracting.Bid marketing site and customer workspace (Blueprint design). Front end only; sample data.",
+  "scripts": {
+    "dev": "next dev",
+    "dev:hivis": "NEXT_PUBLIC_CB_TEMPLATE=hivis next dev --port 3001",
+    "build": "next build",
+    "build:hivis": "NEXT_PUBLIC_CB_TEMPLATE=hivis next build",
+    "start": "next start",
+    "start:hivis": "NEXT_PUBLIC_CB_TEMPLATE=hivis next start --port 3001",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "check": "pnpm typecheck && pnpm test",
+    "e2e": "playwright test",
+    "e2e:hivis": "NEXT_PUBLIC_CB_TEMPLATE=hivis PORT=3101 playwright test",
+    "tokens": "node scripts/build-tokens.mjs",
+    "design:import": "node scripts/import-design-bundle.mjs"
+  },
+  "dependencies": {
+    "@fontsource/archivo": "^5.3.0",
+    "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@fontsource/ibm-plex-sans": "^5.3.0",
+    "next": "^16.4.6",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.1",
+    "@types/node": "^22.20.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "typescript": "~5.9.3",
+    "vitest": "^5.1.0"
+  }
+}

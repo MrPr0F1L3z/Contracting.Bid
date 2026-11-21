@@ -1,0 +1,332 @@
+[
+  {
+    "id": "p1",
+    "title": "Transit yard paving, phase 2",
+    "owner": "Alder Regional Transit",
+    "value": 640000,
+    "stage": "find",
+    "match": 92,
+    "due": "Bids due Dec 4",
+    "summary": "Mill and overlay 86,000 sq ft of bus yard, restripe, and replace four catch basins.",
+    "requirements": [
+      {
+        "label": "Bonding capacity",
+        "detail": "$640,000 is inside your $750,000 single-job limit.",
+        "pill": "Fits",
+        "tone": "success"
+      },
+      {
+        "label": "Bid bond",
+        "detail": "10% of the bid amount.",
+        "pill": "Required",
+        "tone": "neutral"
+      },
+      {
+        "label": "Prevailing wage",
+        "detail": "State rates apply; certified payroll weekly.",
+        "pill": "Required",
+        "tone": "neutral"
+      },
+      {
+        "label": "Night work",
+        "detail": "Paving is limited to 8 pm–5 am.",
+        "pill": "Check crew",
+        "tone": "warning"
+      }
+    ],
+    "trade": "Paving",
+    "level": "local",
+    "place": {
+      "lat": 40.174,
+      "lon": -105
+    },
+    "miles": 12,
+    "source": "State and local feed",
+    "fit": {
+      "ideal": true,
+      "reasons": []
+    },
+    "awards": [
+      {
+        "id": "a1",
+        "source": "State and local feed",
+        "contractor": "Cascade Paving & Grading",
+        "amount": 512400,
+        "start": "2023-04",
+        "end": "2023-09",
+        "contract": "ART-23-0117, Transit yard paving, phase 1",
+        "agency": "Alder Regional Transit",
+        "scope": "Mill and overlay of the north lot, 71,000 sq ft, with striping.",
+        "offers": "5",
+        "changes": "2 change orders, final value $538,900"
+      },
+      {
+        "id": "a2",
+        "source": "State and local feed",
+        "contractor": "Hollis Asphalt Co.",
+        "amount": 298000,
+        "start": "2017-05",
+        "end": "2017-08",
+        "contract": "ART-17-0042, Bus yard resurfacing",
+        "agency": "Alder Regional Transit",
+        "scope": "Overlay of drive lanes and replacement of two catch basins.",
+        "offers": "3",
+        "changes": "None"
+      }
+    ]
+  },
+  {
+    "id": "p2",
+    "title": "Library ADA restroom remodel",
+    "owner": "City of Alder",
+    "value": 156000,
+    "stage": "research",
+    "match": 87,
+    "due": "Walkthrough Nov 20",
+    "summary": "Remodel two restrooms to current accessibility standards: partitions, fixtures, tile and door hardware.",
+    "requirements": [
+      {
+        "label": "Mandatory walkthrough",
+        "detail": "Nov 20, 9:00 am at the main entrance.",
+        "pill": "Attend",
+        "tone": "warning"
+      },
+      {
+        "label": "Addenda",
+        "detail": "1 posted Nov 9: revised fixture schedule.",
+        "pill": "Read",
+        "tone": "info"
+      },
+      {
+        "label": "Insurance",
+        "detail": "$2M general liability; your policy meets it.",
+        "pill": "Fits",
+        "tone": "success"
+      },
+      {
+        "label": "License",
+        "detail": "B General Building; on file.",
+        "pill": "Fits",
+        "tone": "success"
+      }
+    ],
+    "trade": "General building",
+    "level": "local",
+    "place": {
+      "lat": 40.058,
+      "lon": -105
+    },
+    "miles": 4,
+    "source": "State and local feed",
+    "fit": {
+      "ideal": true,
+      "reasons": []
+    },
+    "awards": [
+      {
+        "id": "a3",
+        "source": "State and local feed",
+        "contractor": "Marlow Builders",
+        "amount": 131500,
+        "start": "2021-06",
+        "end": "2021-10",
+        "contract": "COA-21-088, Library east wing restroom remodel",
+        "agency": "City of Alder",
+        "scope": "Two restrooms brought to accessibility standards; partitions, fixtures and tile.",
+        "offers": "4",
+        "changes": "1 change order, final value $136,200"
+      }
+    ]
+  },
+  {
+    "id": "l3",
+    "title": "Community center boiler replacement",
+    "owner": "Alder Parks District",
+    "value": 128000,
+    "stage": "find",
+    "match": 84,
+    "due": "Bids due Dec 11",
+    "summary": "Replace two 1.5M BTU boilers and controls during the winter shutdown.",
+    "requirements": [
+      {
+        "label": "Schedule",
+        "detail": "All work must finish inside a 10-day shutdown.",
+        "pill": "Tight",
+        "tone": "warning"
+      },
+      {
+        "label": "License",
+        "detail": "C-4 boiler; held by Northside Mechanical, your sub.",
+        "pill": "Via sub",
+        "tone": "info"
+      },
+      {
+        "label": "Bid bond",
+        "detail": "5% of the bid amount.",
+        "pill": "Required",
+        "tone": "neutral"
+      }
+    ],
+    "trade": "HVAC",
+    "level": "local",
+    "place": {
+      "lat": 40.13,
+      "lon": -105
+    },
+    "miles": 9,
+    "source": "State and local feed",
+    "fit": {
+      "ideal": true,
+      "reasons": []
+    },
+    "awards": [
+      {
+        "id": "a4",
+        "source": "State and local feed",
+        "contractor": "Northside Mechanical",
+        "amount": 96200,
+        "start": "2014-10",
+        "end": "2014-12",
+        "contract": "APD-14-031, Community center boiler no. 2",
+        "agency": "Alder Parks District",
+        "scope": "Replacement of one 1.5M BTU boiler and its controls.",
+        "offers": "2",
+        "changes": "None"
+      }
+    ]
+  },
+  {
+    "id": "l5",
+    "title": "VA outpatient clinic HVAC controls upgrade",
+    "owner": "Department of Veterans Affairs",
+    "value": 410000,
+    "stage": "find",
+    "match": 81,
+    "due": "Offers due Dec 9",
+    "trade": "HVAC",
+    "level": "federal",
+    "place": {
+      "lat": 40.319,
+      "lon": -105
+    },
+    "miles": 22,
+    "source": "SAM.gov",
+    "fit": {
+      "ideal": true,
+      "reasons": []
+    },
+    "summary": "Replace building automation controllers and rebalance air handling for a 38,000 sq ft outpatient clinic that stays open.",
+    "requirements": [
+      {
+        "label": "Set-aside",
+        "detail": "Total small business.",
+        "pill": "Check",
+        "tone": "warning"
+      },
+      {
+        "label": "Wage rates",
+        "detail": "Davis-Bacon rates apply; certified payroll weekly.",
+        "pill": "Required",
+        "tone": "neutral"
+      },
+      {
+        "label": "Site visit",
+        "detail": "Dec 2, 10:00 am. One visit only.",
+        "pill": "Attend",
+        "tone": "warning"
+      }
+    ],
+    "awards": [
+      {
+        "id": "a5",
+        "contractor": "Ridgeline Controls LLC",
+        "amount": 268000,
+        "start": "2019-03",
+        "end": "2019-11",
+        "contract": "36C25919C0042, Clinic controls replacement, phase 1",
+        "agency": "Department of Veterans Affairs",
+        "scope": "Controllers and sensors for the east wing air handlers.",
+        "offers": "3",
+        "changes": "1 modification, final value $281,400",
+        "source": "USAspending.gov"
+      }
+    ]
+  },
+  {
+    "id": "l4",
+    "title": "Water plant perimeter fencing",
+    "owner": "Alder Water Authority",
+    "value": 72400,
+    "stage": "find",
+    "match": 71,
+    "due": "Bids due Dec 15",
+    "summary": "Remove and replace 2,100 ft of chain-link security fence and two gates.",
+    "requirements": [
+      {
+        "label": "Site access",
+        "detail": "Background checks for every worker on site.",
+        "pill": "Lead time",
+        "tone": "warning"
+      },
+      {
+        "label": "Insurance",
+        "detail": "Meets your current policy.",
+        "pill": "Fits",
+        "tone": "success"
+      }
+    ],
+    "trade": "Fencing",
+    "level": "local",
+    "place": {
+      "lat": 40.449,
+      "lon": -105
+    },
+    "miles": 31,
+    "source": "State and local feed",
+    "fit": {
+      "ideal": false,
+      "reasons": [
+        "Fencing is not one of your trades"
+      ]
+    }
+  },
+  {
+    "id": "l6",
+    "title": "Regional airport terminal reroof",
+    "owner": "Tri-County Airport Authority",
+    "value": 1240000,
+    "stage": "find",
+    "match": 58,
+    "due": "Bids due Dec 18",
+    "trade": "Roofing",
+    "level": "local",
+    "place": {
+      "lat": 42.029,
+      "lon": -105
+    },
+    "miles": 140,
+    "source": "State and local feed",
+    "fit": {
+      "ideal": false,
+      "reasons": [
+        "140 miles away, past your 50",
+        "Over your $750,000 bonding limit"
+      ]
+    },
+    "summary": "Tear off and replace 96,000 sq ft of terminal roof in four phases, working around flight operations.",
+    "requirements": [
+      {
+        "label": "Bonding capacity",
+        "detail": "$1,240,000 is over your $750,000 single-job limit.",
+        "pill": "Over limit",
+        "tone": "danger"
+      },
+      {
+        "label": "Airside badging",
+        "detail": "Every worker needs an airport security badge.",
+        "pill": "Lead time",
+        "tone": "warning"
+      }
+    ]
+  }
+]

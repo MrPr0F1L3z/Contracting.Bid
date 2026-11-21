@@ -2,6 +2,7 @@ import type { AgentRecord } from "./registry.js";
 import type { ToolHandler } from "./loop.js";
 import type { Company } from "../sim/company.js";
 import { TRADES, isTrade, type BidWorld, type Trade } from "../world/market.js";
+import { bidDetails, pursueDetails } from "../approvals/details.js";
 
 export interface EstimateLine {
   trade: Trade;
@@ -49,6 +50,7 @@ export function decideOpportunityTool(c: Company, agent: AgentRecord, world: Bid
         gate: "pursue_opportunity",
         requestedBy: actorOf(agent),
         summary: `Pursue ${world.opportunity.noticeId} "${world.opportunity.title}". ${rationale}`,
+        details: pursueDetails(world.opportunity, rationale),
       });
       const approved = req.status === "approved";
       state.decision = { pursue: true, rationale, ownerApproved: approved, ...(req.reason ? { ownerReason: req.reason } : {}) };
@@ -196,6 +198,7 @@ export function submitBidTool(c: Company, agent: AgentRecord, world: BidWorld, s
         gate: "submit_bid",
         requestedBy: actorOf(agent),
         summary: `Submit a ${usd(Math.round(price))} bid on ${world.opportunity.noticeId}. ${assumptions}`.trim(),
+        details: bidDetails(world.opportunity, Math.round(price), cost, assumptions),
         amountUsd: Math.round(price),
       });
       const approved = req.status === "approved";

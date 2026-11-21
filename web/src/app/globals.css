@@ -1,0 +1,7 @@
+/* App-level glue only. Colours, type and components come from the design system (src/design). */
+html, body { height: 100%; }
+body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+.cb-site, .cb-landing { min-height: 100vh; }
+.cb-shell-layout, .cb-top-layout { min-height: 100vh; }
+.cb-auth, .cb-message { min-height: 100vh; }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }

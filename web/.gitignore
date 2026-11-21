@@ -1,0 +1,6 @@
+.next/
+.next-hivis/
+next-env.d.ts
+tsconfig.tsbuildinfo
+test-results/
+playwright-report/

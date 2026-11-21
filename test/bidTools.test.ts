@@ -52,6 +52,9 @@ describe("decide_opportunity", () => {
     const tool = decideOpportunityTool(c, agent, world, state);
     expect(await tool.handle({ decision: "pursue", rationale: "Good fit for a small team." })).toEqual({ content: "The owner approved pursuing this job. Estimating starts next." });
     expect(asked[0]).toMatchObject({ gate: "pursue_opportunity", requestedBy: "president#1", summary: 'Pursue STUB-E02 "Interior paint and flooring refresh, visitor center". Good fit for a small team.' });
+    expect(asked[0]!.details).toMatchObject({ title: e02.title, subtitle: `${e02.agency} · STUB-E02` });
+    expect(asked[0]!.details!.facts.map((f) => f.label)).toContain("Government estimate");
+    expect(asked[0]!.details!.notes).toEqual([{ label: "Scope", text: e02.scopeSummary }, { label: "Why pursue it", text: "Good fit for a small team." }]);
     expect(state.decision).toEqual({ pursue: true, rationale: "Good fit for a small team.", ownerApproved: true });
     expect(await tool.handle({ decision: "no_bid", rationale: "Changed my mind entirely." })).toMatchObject({ isError: true });
     expect(asked).toHaveLength(1);
