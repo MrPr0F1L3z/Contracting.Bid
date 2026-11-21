@@ -36,7 +36,7 @@ import { isBiddableConstruction } from "../opportunities/pick.js";
 import { STUB_OPPORTUNITIES } from "../opportunities/stub.js";
 import { CachedSource } from "../opportunities/cache.js";
 import type { SamFetch } from "../opportunities/samgov.js";
-import { JOB_SOURCES, jobSource, jobSourceName, type JobSourceName } from "../opportunities/source.js";
+import { JOB_SOURCES, jobSource, jobSourceForStack, type JobSourceName } from "../opportunities/source.js";
 import type { Opportunity } from "../opportunities/types.js";
 
 export const USAGE = `Usage:
@@ -437,9 +437,9 @@ export function launchJobs(listings: readonly Opportunity[] = STUB_OPPORTUNITIES
   return listings.filter(isBiddableConstruction).map((o) => ({ noticeId: o.noticeId, title: o.title, complexity: o.complexity }));
 }
 
-/** The job source for a command: --source, else JOB_SOURCE, else the stub. */
+/** The job source for a command: --source, else JOB_SOURCE, else the stub; always SAM.gov on prod. */
 function sourceFor(args: SimArgs, env: Record<string, string | undefined>, deps: SimDeps & { db?: Db | null }, out: (line: string) => void) {
-  const name = args.source ?? jobSourceName(env.JOB_SOURCE);
+  const name = jobSourceForStack(deps.stack ?? "dev", args.source ?? env.JOB_SOURCE);
   return jobSource(name, env, { db: deps.db ?? null, ...(deps.samFetch ? { fetch: deps.samFetch } : {}), ...(deps.now ? { now: deps.now } : {}), warn: out });
 }
 
@@ -494,17 +494,17 @@ async function serve(args: SimArgs, env: Record<string, string | undefined>, por
   let server: DashboardServer;
   const stack = deps.stack ?? "dev";
   let offered: readonly Opportunity[] = STUB_OPPORTUNITIES;
-  if (allowsSimRuns(stack)) {
-    try {
-      const source = sourceFor(args, env, deps, out);
-      if (source.name !== "stub") {
-        offered = await source.list();
-        out(`Offering ${launchJobs(offered).length} ${source.name} job(s) in Start a run (restart the service to read new listings).`);
-      }
-    } catch (err) {
-      out(`${err instanceof Error ? err.message : String(err)}. Start a run offers no jobs; fix the setting and restart.`);
-      offered = [];
+  try {
+    const source = sourceFor(args, env, { ...deps, stack }, out);
+    if (source.name !== "stub") {
+      offered = await source.list();
+      out(allowsSimRuns(stack)
+        ? `Offering ${launchJobs(offered).length} ${source.name} job(s) in Start a run (restart the service to read new listings).`
+        : `Read ${launchJobs(offered).length} ${source.name} job(s) that can be bid.`);
     }
+  } catch (err) {
+    out(`${err instanceof Error ? err.message : String(err)}. ${allowsSimRuns(stack) ? "Start a run offers no jobs" : "No SAM.gov listings were read"}; fix the setting and restart.`);
+    offered = [];
   }
   // Prod never starts sim runs, so its dashboard has no Start a run tab.
   const launcher = allowsSimRuns(stack)

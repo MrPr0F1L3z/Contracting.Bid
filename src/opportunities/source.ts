@@ -1,3 +1,4 @@
+import type { Stack } from "../config/stack.js";
 import type { Db } from "../db/db.js";
 import { CachedSource, DbListingStore, FileListingStore } from "./cache.js";
 import { SamGovSource, samGovSettings, type SamFetch } from "./samgov.js";
@@ -16,6 +17,18 @@ export function jobSourceName(value: string | undefined): JobSourceName {
   if (v === "") return "stub";
   if ((JOB_SOURCES as readonly string[]).includes(v)) return v as JobSourceName;
   throw new Error(`JOB_SOURCE must be ${JOB_SOURCES.join(" or ")}, not "${value}"`);
+}
+
+/**
+ * The job source on a stack. Dev and staging take JOB_SOURCE (staging sets it in
+ * deploy/stacks/staging.env). Prod only ever reads SAM.gov: the stub's made-up
+ * jobs are sim data, so asking prod for them is refused.
+ */
+export function jobSourceForStack(stack: Stack, value: string | undefined): JobSourceName {
+  if (stack !== "prod") return jobSourceName(value);
+  const v = value?.trim().toLowerCase() ?? "";
+  if (v !== "" && v !== "samgov") throw new Error(`The prod stack only reads jobs from SAM.gov, never sim data, so its job source is always samgov, not "${value}".`);
+  return "samgov";
 }
 
 export interface JobSourceDeps {

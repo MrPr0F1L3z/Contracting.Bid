@@ -262,8 +262,11 @@ export class Pipeline {
       () => this.step("migrations applied", "docker", exec("node", "dist/src/cli/db.js", "status"), (r) => r.code === 0 && !/^pending/m.test(r.stdout), env),
       // A fixed seed with a forced award, so the check always runs the whole job (a random seed can lose the bid).
       () => this.step("stub closeout run on staging", "docker", exec("node", "dist/src/cli/sim.js", "closeout", "--stub", "--force-award", "--seed", "1"), (r) => r.code === 0 && /: CLOSED in/.test(r.stdout), env),
-      // The image a prod deploy would run must refuse sim runs. No database is involved.
+      // Staging's job source (JOB_SOURCE in deploy/stacks/staging.env) must answer: SAM.gov, or its cache.
+      () => this.step("staging reads its job listings", "docker", exec("node", "dist/src/cli/sim.js", "listings"), (r) => r.code === 0, env),
+      // The image a prod deploy would run must refuse sim runs and the stub's made-up jobs. No database is involved.
       () => this.step("prod refuses sim runs", "docker", ["run", "--rm", "--network", "none", "-e", "APP_STACK=prod", imageFor(build), "node", "dist/src/cli/sim.js", "closeout", "--stub"], (r) => r.code === 3 && /never runs simulations/.test(r.stdout)),
+      () => this.step("prod refuses stub jobs", "docker", ["run", "--rm", "--network", "none", "-e", "APP_STACK=prod", "-e", "JOB_SOURCE=stub", imageFor(build), "node", "dist/src/cli/sim.js", "listings"], (r) => r.code === 2 && /only reads jobs from SAM\.gov/.test(r.stdout)),
     ];
     return this.runSteps(checks);
   }
@@ -476,6 +479,7 @@ export class Pipeline {
       () => this.health(settings, build),
       () => this.step("migrations applied", "docker", exec("node", "dist/src/cli/db.js", "status"), (r) => r.code === 0 && !/^pending/m.test(r.stdout), env),
       () => this.step("prod refuses sim runs", "docker", exec("node", "dist/src/cli/sim.js", "closeout", "--stub"), (r) => r.code === 3 && /never runs simulations/.test(r.stdout), env),
+      () => this.step("prod reads SAM.gov listings", "docker", exec("node", "dist/src/cli/sim.js", "listings"), (r) => r.code === 0 && /SAM\.gov listing\(s\)/.test(r.stdout), env),
     ];
   }
 

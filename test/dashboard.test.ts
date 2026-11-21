@@ -130,6 +130,11 @@ describe("DashboardServer workspace view", () => {
     d.clearLive();
     expect((await d.workspace()).jobs).toHaveLength(1);
   });
+  it("on prod, fills nothing in from the stub's made-up jobs", async () => {
+    const d = new DashboardServer({ runsDir: "nowhere", users: new MemoryUserStore(), stack: "prod" });
+    d.tee().append(e("r1", "opportunity_found", { noticeId: "STUB-E02", title: "Paint" }));
+    expect((await d.workspace()).jobs[0]!.agency).toBeNull();
+  });
   it("keeps only the latest runs in memory", async () => {
     const d = new DashboardServer({ runsDir: "nowhere", users: new MemoryUserStore() });
     const log = d.tee();

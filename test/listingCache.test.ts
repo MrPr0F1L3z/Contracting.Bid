@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { CachedSource, DbListingStore, FileListingStore, type ListingSnapshot } from "../src/opportunities/cache.js";
 import { SamGovSource, type SamFetch } from "../src/opportunities/samgov.js";
-import { DEFAULT_CACHE_FILE, jobSource, jobSourceName } from "../src/opportunities/source.js";
+import { DEFAULT_CACHE_FILE, jobSource, jobSourceForStack, jobSourceName } from "../src/opportunities/source.js";
 import { StubOpportunitySource } from "../src/opportunities/stub.js";
 import { migratedDb } from "./helpers/pgliteDb.js";
 
@@ -118,6 +118,15 @@ describe("jobSource", () => {
     expect(jobSourceName(undefined)).toBe("stub");
     expect(jobSourceName(" SAMGOV ")).toBe("samgov");
     expect(() => jobSourceName("sam")).toThrow('JOB_SOURCE must be stub or samgov, not "sam"');
+  });
+
+  it("lets dev and staging choose, and holds prod to SAM.gov", () => {
+    expect(jobSourceForStack("dev", undefined)).toBe("stub");
+    expect(jobSourceForStack("staging", "samgov")).toBe("samgov");
+    expect(jobSourceForStack("staging", "stub")).toBe("stub");
+    expect(jobSourceForStack("prod", undefined)).toBe("samgov");
+    expect(jobSourceForStack("prod", " SamGov ")).toBe("samgov");
+    expect(() => jobSourceForStack("prod", "stub")).toThrow('The prod stack only reads jobs from SAM.gov, never sim data, so its job source is always samgov, not "stub".');
   });
 
   it("builds the stub, or SAM.gov through a cache", () => {

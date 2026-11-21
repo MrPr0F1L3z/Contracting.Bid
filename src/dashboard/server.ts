@@ -221,7 +221,8 @@ export class DashboardServer {
       const saved = (await this.readRun(run.file))?.events;
       if (Array.isArray(saved)) events.push(...(saved as LoggedEvent[]).filter((e) => e !== null && typeof e === "object" && e.runId === run.runId && isJobEvent(e)));
     }
-    const jobs = projectJobs(events, STUB_OPPORTUNITIES);
+    // Prod never sees sim data, the stub's made-up jobs included.
+    const jobs = projectJobs(events, this.o.stack === "prod" ? [] : STUB_OPPORTUNITIES);
     return { jobs, stats: workspaceStats(jobs) };
   }
 

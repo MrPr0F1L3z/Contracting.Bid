@@ -79,6 +79,9 @@ services:
       DATABASE_URL: postgres://contracting:contracting@db:5432/contracting
       # prod: no Start a run tab, and every sim command refuses to run.
       APP_STACK: ${APP_STACK:-dev}
+      # Where jobs come from: deploy/stacks/STACK.env sets it for staging and prod (always samgov);
+      # dev takes it from .env. SAM_GOV_API_KEY comes from .env.
+      JOB_SOURCE: ${JOB_SOURCE:-stub}
       APP_BUILD: ${APP_BUILD:-}
       DASHBOARD_HOST: 0.0.0.0
       DASHBOARD_PORT: "4100"
