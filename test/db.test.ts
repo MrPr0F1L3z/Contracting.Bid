@@ -48,10 +48,10 @@ describe("migrations (functional, embedded Postgres)", () => {
   it("applies the repo's migrations once, in order", async () => {
     const db = pgliteDb();
     const all = await loadMigrations(MIGRATIONS);
-    expect((await pendingMigrations(db, all)).map((m) => m.name)).toEqual(["001_init.sql", "002_runs_users.sql", "003_run_started_by.sql", "004_stack_identity.sql"]);
-    expect(await migrate(db, all)).toEqual(["001_init.sql", "002_runs_users.sql", "003_run_started_by.sql", "004_stack_identity.sql"]);
+    expect((await pendingMigrations(db, all)).map((m) => m.name)).toEqual(["001_init.sql", "002_runs_users.sql", "003_run_started_by.sql", "004_stack_identity.sql", "005_listing_cache.sql"]);
+    expect(await migrate(db, all)).toEqual(["001_init.sql", "002_runs_users.sql", "003_run_started_by.sql", "004_stack_identity.sql", "005_listing_cache.sql"]);
     expect(await migrate(db, all)).toEqual([]);
-    expect(await appliedMigrations(db)).toEqual(["001_init.sql", "002_runs_users.sql", "003_run_started_by.sql", "004_stack_identity.sql"]);
+    expect(await appliedMigrations(db)).toEqual(["001_init.sql", "002_runs_users.sql", "003_run_started_by.sql", "004_stack_identity.sql", "005_listing_cache.sql"]);
     expect(await pendingMigrations(db, all)).toEqual([]);
     await db.close();
   }, 30_000);
@@ -60,8 +60,8 @@ describe("migrations (functional, embedded Postgres)", () => {
     const db = pgliteDb();
     const all = await loadMigrations(MIGRATIONS);
     await db.exec(all[0]!.sql);
-    expect((await pendingMigrations(db, all)).map((m) => m.name)).toEqual(["002_runs_users.sql", "003_run_started_by.sql", "004_stack_identity.sql"]);
-    expect(await migrate(db, all)).toEqual(["002_runs_users.sql", "003_run_started_by.sql", "004_stack_identity.sql"]);
+    expect((await pendingMigrations(db, all)).map((m) => m.name)).toEqual(["002_runs_users.sql", "003_run_started_by.sql", "004_stack_identity.sql", "005_listing_cache.sql"]);
+    expect(await migrate(db, all)).toEqual(["002_runs_users.sql", "003_run_started_by.sql", "004_stack_identity.sql", "005_listing_cache.sql"]);
     await db.close();
   }, 30_000);
 
@@ -208,10 +208,10 @@ describe("pnpm db (functional, embedded Postgres)", () => {
     const db = pgliteDb();
     const env = { MIGRATIONS_DIR: MIGRATIONS, DASHBOARD_USERS_FILE: join(dir, "users.json") };
     expect(await dbMain(["status"], { out, env, db })).toBe(0);
-    expect(lines).toEqual(["pending  001_init.sql", "pending  002_runs_users.sql", "pending  003_run_started_by.sql", "pending  004_stack_identity.sql"]);
+    expect(lines).toEqual(["pending  001_init.sql", "pending  002_runs_users.sql", "pending  003_run_started_by.sql", "pending  004_stack_identity.sql", "pending  005_listing_cache.sql"]);
     lines = [];
     expect(await dbMain(["import", "--out", join(dir, "none")], { out, env, db })).toBe(0);
-    expect(lines[0]).toBe("Applied 001_init.sql, 002_runs_users.sql, 003_run_started_by.sql, 004_stack_identity.sql.");
+    expect(lines[0]).toBe("Applied 001_init.sql, 002_runs_users.sql, 003_run_started_by.sql, 004_stack_identity.sql, 005_listing_cache.sql.");
     lines = [];
     expect(await dbMain(["migrate"], { out, env, db })).toBe(0);
     expect(lines).toEqual(["The database is up to date."]);

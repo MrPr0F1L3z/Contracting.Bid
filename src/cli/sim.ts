@@ -34,6 +34,10 @@ import { RunLauncher, maxParallelRuns, type LaunchJob } from "../dashboard/launc
 import type { EventLog } from "../events/eventLog.js";
 import { isBiddableConstruction } from "../opportunities/pick.js";
 import { STUB_OPPORTUNITIES } from "../opportunities/stub.js";
+import { CachedSource } from "../opportunities/cache.js";
+import type { SamFetch } from "../opportunities/samgov.js";
+import { JOB_SOURCES, jobSource, jobSourceName, type JobSourceName } from "../opportunities/source.js";
+import type { Opportunity } from "../opportunities/types.js";
 
 export const USAGE = `Usage:
   pnpm sim hiring [--models hybrid|cloud] [--stub] [--seed N] [--out DIR]
@@ -42,6 +46,7 @@ export const USAGE = `Usage:
                   [--auto-approve] [--stub] [--seed N] [--out DIR]
   pnpm sim job    the same flags as bid, plus [--force-award]
   pnpm sim closeout  the same flags as job
+  pnpm sim listings [--source stub|samgov] [--refresh]   show the jobs a run can bid
   pnpm sim dashboard [--out DIR]   open the owner dashboard on saved reports
   pnpm sim serve     keep the owner dashboard up, and start runs from it (needs DATABASE_URL)
   pnpm sim user add|passwd|reset-code|remove NAME, or pnpm sim user list   manage dashboard logins
@@ -54,6 +59,11 @@ export const USAGE = `Usage:
   --seed N   hiring and bid: the run's seed (random if left out); a bid run replays from it
   --job ID   bid only: bid this solicitation (default: picked by seed)
   --complexity  bid only: pick only among jobs at this complexity
+  --source   bid, job, closeout and listings: where jobs come from, stub (made-up, the
+             default) or samgov (real listings, read-only; needs SAM_GOV_API_KEY).
+             JOB_SOURCE sets the default.
+  --refresh  listings only: read SAM.gov now instead of using listings cached in the
+             last SAMGOV_CACHE_HOURS (each read uses some of the key's daily requests)
   --auto-approve  bid and job: approve every owner gate without asking (simulation only)
   --dashboard     bid, job and closeout: answer approvals and watch the run in the owner dashboard
   --force-award   job and closeout: if a responsive bid loses on price, award it anyway (simulation only)
@@ -69,7 +79,7 @@ Bookkeeper invoices, pays every bill and collects, and the PM closes the project
 bid, job or closeout run always bids ${STUB_BID_JOB} and approves every gate.`;
 
 export interface SimArgs {
-  command: "hiring" | "bench" | "bid" | "job" | "closeout" | "dashboard" | "serve";
+  command: "hiring" | "bench" | "bid" | "job" | "closeout" | "dashboard" | "serve" | "listings";
   dashboard?: boolean;
   forceAward?: boolean;
   profiles: Profile[];
@@ -80,6 +90,10 @@ export interface SimArgs {
   job?: string;
   complexity?: Complexity;
   autoApprove?: boolean;
+  /** Where jobs come from; left out, JOB_SOURCE decides. */
+  source?: JobSourceName;
+  /** listings: read SAM.gov now. */
+  refresh?: boolean;
 }
 
 function parseCount(flag: string, value: string, min: number): number {
@@ -91,10 +105,19 @@ function parseCount(flag: string, value: string, min: number): number {
 /** Parses a sim command line. Throws on anything unknown. */
 export function parseSimArgs(argv: string[]): SimArgs {
   const [command, ...args] = argv;
-  if (command !== "hiring" && command !== "bench" && command !== "bid" && command !== "job" && command !== "closeout" && command !== "dashboard" && command !== "serve") throw new Error(`Unknown command "${command ?? ""}"`);
+  if (command !== "hiring" && command !== "bench" && command !== "bid" && command !== "job" && command !== "closeout" && command !== "dashboard" && command !== "serve" && command !== "listings") throw new Error(`Unknown command "${command ?? ""}"`);
   if (command === "serve") {
     if (args.length) throw new Error("serve takes no options");
     return { command, profiles: ["cloud"], runs: 3, stub: false, out: "runs" };
+  }
+  if (command === "listings") {
+    const parsed: SimArgs = { command, profiles: ["cloud"], runs: 3, stub: false, out: "runs" };
+    for (let i = 0; i < args.length; i++) {
+      if (args[i] === "--refresh") parsed.refresh = true;
+      else if (args[i] === "--source") parsed.source = parseSource(args[++i]);
+      else throw new Error(`listings takes only --source and --refresh, not "${args[i]}"`);
+    }
+    return parsed;
   }
   const bidLike = command === "bid" || command === "job" || command === "closeout";
   const parsed: SimArgs = {
@@ -125,10 +148,14 @@ export function parseSimArgs(argv: string[]): SimArgs {
       parsed.autoApprove = true;
       continue;
     }
-    if (!["--models", "--runs", "--seed", "--out", "--job", "--complexity"].includes(arg)) throw new Error(`Unknown option "${arg}"`);
+    if (!["--models", "--runs", "--seed", "--out", "--job", "--complexity", "--source"].includes(arg)) throw new Error(`Unknown option "${arg}"`);
     const value = args[++i];
     if (value === undefined) throw new Error(`${arg} needs a value`);
     if (arg === "--out") parsed.out = value;
+    else if (arg === "--source") {
+      if (!bidLike) throw new Error("--source is only for bid, job, closeout and listings");
+      parsed.source = parseSource(value);
+    }
     else if (arg === "--job" || arg === "--complexity") {
       if (!bidLike) throw new Error(`${arg} is only for bid and job`);
       if (arg === "--job") parsed.job = value;
@@ -154,8 +181,15 @@ export function parseSimArgs(argv: string[]): SimArgs {
   if (parsed.stub && bidLike) {
     if (parsed.job !== undefined && parsed.job !== STUB_BID_JOB) throw new Error(`A stub bid run only bids ${STUB_BID_JOB}`);
     if (parsed.complexity !== undefined && parsed.complexity !== "easy") throw new Error(`A stub bid run only bids ${STUB_BID_JOB} (easy)`);
+    if (parsed.source === "samgov") throw new Error(`A stub bid run only bids ${STUB_BID_JOB}, from the stub source`);
   }
   return parsed;
+}
+
+function parseSource(value: string | undefined): JobSourceName {
+  if (value === undefined) throw new Error("--source needs a value");
+  if (!(JOB_SOURCES as readonly string[]).includes(value)) throw new Error(`Unknown source "${value}"; use ${JOB_SOURCES.join(" or ")}`);
+  return value as JobSourceName;
 }
 
 /** Asks the owner in the terminal: y approves, anything else rejects (with the text as the reason). */
@@ -307,6 +341,8 @@ export interface SimDeps {
   now?: () => Date;
   /** The stack this process runs as (APP_STACK); main() sets it. */
   stack?: Stack;
+  /** How SAM.gov is reached; tests inject a fake. */
+  samFetch?: SamFetch;
 }
 
 /** Saves a run's report as a file in the reports folder (runs without a database). */
@@ -397,8 +433,42 @@ export function untilSignal(): Promise<void> {
 }
 
 /** The jobs the dashboard offers when starting a run. */
-export function launchJobs(): LaunchJob[] {
-  return STUB_OPPORTUNITIES.filter(isBiddableConstruction).map((o) => ({ noticeId: o.noticeId, title: o.title, complexity: o.complexity }));
+export function launchJobs(listings: readonly Opportunity[] = STUB_OPPORTUNITIES): LaunchJob[] {
+  return listings.filter(isBiddableConstruction).map((o) => ({ noticeId: o.noticeId, title: o.title, complexity: o.complexity }));
+}
+
+/** The job source for a command: --source, else JOB_SOURCE, else the stub. */
+function sourceFor(args: SimArgs, env: Record<string, string | undefined>, deps: SimDeps & { db?: Db | null }, out: (line: string) => void) {
+  const name = args.source ?? jobSourceName(env.JOB_SOURCE);
+  return jobSource(name, env, { db: deps.db ?? null, ...(deps.samFetch ? { fetch: deps.samFetch } : {}), ...(deps.now ? { now: deps.now } : {}), warn: out });
+}
+
+/** `pnpm sim listings`: the jobs a run can bid, from the configured source. */
+async function listings(args: SimArgs, env: Record<string, string | undefined>, deps: SimDeps & { db: Db | null }, out: (line: string) => void): Promise<number> {
+  let all: Opportunity[];
+  try {
+    const source = sourceFor(args, env, deps, out);
+    if (source instanceof CachedSource) {
+      const snap = await source.snapshot(args.refresh ?? false);
+      out(`${snap.opportunities.length} SAM.gov listing(s), read ${snap.fetchedAt}${snap.requests ? ` with ${snap.requests} request(s)` : ""}.`);
+      all = snap.opportunities;
+    } else {
+      if (args.refresh) out("The stub source has nothing to refresh.");
+      all = await source.list();
+      out(`${all.length} made-up stub listing(s).`);
+    }
+  } catch (err) {
+    out(err instanceof Error ? err.message : String(err));
+    return 2;
+  }
+  const biddable = all.filter(isBiddableConstruction).sort((a, b) => (a.responseDeadline || "~").localeCompare(b.responseDeadline || "~"));
+  out(`${biddable.length} can be bid (active construction solicitations), soonest due first:`);
+  for (const o of biddable) {
+    const place = [o.placeOfPerformance.city, o.placeOfPerformance.state].filter(Boolean).join(", ") || "place not given";
+    out(`  ${o.noticeId}  ${(o.complexity ?? "unrated").padEnd(8)}  due ${o.responseDeadline ? o.responseDeadline.slice(0, 10) : "not given"}  ${o.title} (${place})`);
+  }
+  if (biddable.length) out("Bid one with: pnpm sim closeout --job ID" + (all[0]?.source === "samgov" ? " --source samgov" : ""));
+  return 0;
 }
 
 /**
@@ -423,13 +493,26 @@ async function serve(args: SimArgs, env: Record<string, string | undefined>, por
   if (before.length) out(`Marked ${before.length} run(s) cut off by the last stop as interrupted: ${before.join(", ")}`);
   let server: DashboardServer;
   const stack = deps.stack ?? "dev";
+  let offered: readonly Opportunity[] = STUB_OPPORTUNITIES;
+  if (allowsSimRuns(stack)) {
+    try {
+      const source = sourceFor(args, env, deps, out);
+      if (source.name !== "stub") {
+        offered = await source.list();
+        out(`Offering ${launchJobs(offered).length} ${source.name} job(s) in Start a run (restart the service to read new listings).`);
+      }
+    } catch (err) {
+      out(`${err instanceof Error ? err.message : String(err)}. Start a run offers no jobs; fix the setting and restart.`);
+      offered = [];
+    }
+  }
   // Prod never starts sim runs, so its dashboard has no Start a run tab.
   const launcher = allowsSimRuns(stack)
     ? new RunLauncher(async (argv, runOut, by) => {
         // Start a fresh live log only when no other run is writing to it.
         if (launcher!.state().running.length === 1) server.clearLive();
         return runCommand(argv, { ...deps, dashboard: server, startedBy: `dashboard:${by}` }, runOut);
-      }, launchJobs(), deps.now, maxParallel)
+      }, launchJobs(offered), deps.now, maxParallel)
     : undefined;
   try {
     server = new DashboardServer({ ...(await dashboardOptions(env, args.out, port, undefined, deps.db)), stack, ...(launcher ? { launcher } : {}), ...(env.APP_BUILD ? { build: env.APP_BUILD } : {}) });
@@ -495,6 +578,7 @@ async function runCommand(argv: string[], deps: SimDeps & { db: Db | null }, out
     return 0;
   }
   if (args.command === "serve") return serve(args, env, port, deps, out);
+  if (args.command === "listings") return listings(args, env, deps, out);
   const config = loadConfig(env);
   const write = deps.writeReport ?? defaultWrite;
   const stamp = (deps.now ?? (() => new Date()))().toISOString().replace(/[:.]/g, "-");
@@ -619,6 +703,20 @@ async function runBid(
           return rl.question(q);
         }));
   const job = args.stub ? STUB_BID_JOB : args.job;
+  let jobs: { opportunities: Opportunity[]; describe?: (o: Opportunity) => Promise<Opportunity> } | null = null;
+  if (!args.stub) {
+    try {
+      const source = sourceFor(args, deps.env ?? process.env, deps, out);
+      if (source.name !== "stub") {
+        jobs = { opportunities: await source.list(), ...(source.describe ? { describe: (o: Opportunity) => source.describe!(o) } : {}) };
+        out(`Bidding from ${jobs.opportunities.length} ${source.name} listing(s).`);
+      }
+    } catch (err) {
+      out(err instanceof Error ? err.message : String(err));
+      if (ownDashboard) await dashboard?.stop();
+      return 2;
+    }
+  }
   out(`Starting a ${profile} ${args.command} run${args.stub ? " with scripted models" : ""}, seed ${seed}. Claude budget: $${config.runBudgetUsd}.`);
   try {
     const runId = `${args.command}-${profile}-${stamp}-${seed}`;
@@ -635,6 +733,7 @@ async function runBid(
       ...(log ? { log } : {}),
       ...(job !== undefined ? { noticeId: job } : {}),
       ...(args.complexity !== undefined ? { complexity: args.complexity } : {}),
+      ...(jobs ? { opportunities: jobs.opportunities, ...(jobs.describe ? { describe: jobs.describe } : {}) } : {}),
     };
     const forced = { ...options, forceAward: args.forceAward ?? false };
     const report =

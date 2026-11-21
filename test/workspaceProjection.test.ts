@@ -37,6 +37,7 @@ describe("projectJob (unit, hand-written events)", () => {
     const j = projectJob("r1", [ev("opportunity_found", { noticeId: "STUB-E02", title: "Paint" }), ev("opportunity_found", { noticeId: "X", title: "Other" }, "r2")], STUB_OPPORTUNITIES);
     expect(j).toMatchObject({ noticeId: "STUB-E02", title: "Paint", agency: STUB_OPPORTUNITIES.find((o) => o.noticeId === "STUB-E02")!.agency });
     expect(projectJob("r1", [ev("opportunity_found", { noticeId: "NOPE", title: "T" })]).agency).toBeNull();
+    expect(projectJob("r1", [ev("opportunity_found", { noticeId: "NOPE", title: "T", agency: "From the event" })]).agency).toBe("From the event");
   });
   it("marks a job passed when the President or the owner declines", () => {
     expect(projectJob("r1", [ev("opportunity_decided", { decision: "pass" })]).status).toBe("passed");

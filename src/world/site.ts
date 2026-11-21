@@ -2,7 +2,7 @@ import type { ScheduledProblem } from "../sim/problems.js";
 import type { SeededRng } from "../sim/rng.js";
 import type { BidWorld, Quote, Trade } from "./market.js";
 
-/** Contract duration of each stub job, in working days, from its scope text. */
+/** Contract working days for each stub job (a real listing's are drawn by seed; see scope.ts). */
 export const JOB_DURATION_DAYS: Readonly<Record<string, number>> = {
   "STUB-E01": 10,
   "STUB-E02": 15,
@@ -131,8 +131,7 @@ export class SiteWorld {
     rng: SeededRng,
     problems: readonly ScheduledProblem[],
   ) {
-    const days = JOB_DURATION_DAYS[bid.opportunity.noticeId];
-    if (days === undefined) throw new Error(`No simulated duration for ${bid.opportunity.noticeId}`);
+    const days = bid.contractDays;
     this.rng = rng.fork("site");
     this.contractDays = days;
     this.ldPerDayUsd = Math.max(250, round100(contractPriceUsd * 0.002));

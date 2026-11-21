@@ -30,10 +30,14 @@ describe("JOB_SCOPES", () => {
 });
 
 describe("BidWorld", () => {
-  it("refuses a job it has no scope for", () => {
-    expect(() => new BidWorld(job("STUB-X01"), new SeededRng(1))).toThrow("No simulated scope for STUB-X01");
+  it("infers a scope for a job with none written out, and a value when the notice states none", () => {
+    const w = new BidWorld(job("STUB-X01"), new SeededRng(1));
+    expect(w.requiredTrades.length).toBeGreaterThan(0);
     const noValue = { ...job("STUB-E01"), estimatedValueUsd: null } as Opportunity;
-    expect(() => new BidWorld(noValue, new SeededRng(1))).toThrow("No simulated scope");
+    const v = new BidWorld(noValue, new SeededRng(1));
+    expect(v.requiredTrades).toEqual(["asphalt_paving", "concrete", "sitework", "striping"]);
+    expect(v.valueUsd.min).toBeGreaterThan(0);
+    expect(new BidWorld(noValue, new SeededRng(1)).valueUsd).toEqual(v.valueUsd);
   });
 
   it("prices the true cost below the government range, by required trade", () => {

@@ -29,6 +29,8 @@ export interface BidChainOptions extends CompanyOptions {
   noticeId?: string;
   /** Pick only among jobs at this complexity. */
   complexity?: Complexity;
+  /** Fills in the picked job's details, such as a real notice's description, before the agents see it. */
+  describe?: (o: Opportunity) => Promise<Opportunity>;
 }
 
 export type BidOutcome = "awarded" | "lost" | "no_bid" | "owner_declined" | "incomplete";
@@ -158,9 +160,18 @@ export async function bidStage(c: Company, o: BidChainOptions, rng: SeededRng, p
   } else {
     opportunity = pickOpportunity([...all], rng, o.complexity ? { complexity: o.complexity } : {});
   }
+  if (o.describe) opportunity = await o.describe(opportunity);
   const w = new BidWorld(opportunity, rng, problems);
   world = w;
-  c.event("opportunity_found", "world", { noticeId: opportunity.noticeId, title: opportunity.title, complexity: opportunity.complexity });
+  c.event("opportunity_found", "world", {
+    noticeId: opportunity.noticeId,
+    title: opportunity.title,
+    complexity: opportunity.complexity,
+    agency: opportunity.agency,
+    source: opportunity.source ?? "stub",
+    // A real listing can change or drop off SAM.gov, so the run keeps the listing it bid.
+    ...(opportunity.source === "samgov" ? { listing: opportunity } : {}),
+  });
 
   // 1. The President decides whether to pursue.
   const decideResult = await c.runTask(
