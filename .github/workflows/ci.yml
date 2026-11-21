@@ -86,3 +86,17 @@ jobs:
       # The Hi-Vis template is the same site in the other design; build it and run the same browser tests.
       - run: pnpm build:hivis
       - run: pnpm e2e:hivis
+      # Deploy check for the cPanel host (docs/CPANEL.md): the site must export as plain files,
+      # with every page as a folder holding index.html, and stamp cleanly for both targets.
+      - run: pnpm build:export
+        env:
+          CB_SITE_ENV: staging
+      - run: |
+          set -eu
+          for f in index.html 404.html pricing/index.html app/index.html app/bids/index.html robots.txt; do
+            test -f "out/$f" || { echo "missing out/$f"; exit 1; }
+          done
+          grep -q "Disallow: /$" out/robots.txt
+      - run: pnpm cpanel stamp staging web/out --commit "$GITHUB_SHA"
+        working-directory: .
+      - run: test -f out/.htaccess && test -f out/_next/static/.htaccess && grep -q "commit=$GITHUB_SHA" out/build.txt

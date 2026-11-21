@@ -2,6 +2,8 @@
 
 Contracting.Bid runs as three stacks on this machine. Each has its own database and its own dashboard.
 
+The customer site (`web/`) is separate: it is served from the cPanel host at staging.contracting.bid and www.contracting.bid, deployed by GitHub Actions. See [CPANEL.md](CPANEL.md).
+
 | Stack | What it runs | Data | Dashboard | Database |
 |---|---|---|---|---|
 | dev | this checkout, as you change it | sim runs | 127.0.0.1:4100 | 127.0.0.1:5432 (the one you have today) |

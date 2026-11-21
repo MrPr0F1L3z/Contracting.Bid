@@ -7,6 +7,7 @@
     "dev": "next dev",
     "dev:hivis": "NEXT_PUBLIC_CB_TEMPLATE=hivis next dev --port 3001",
     "build": "next build",
+    "build:export": "CB_STATIC_EXPORT=1 next build",
     "build:hivis": "NEXT_PUBLIC_CB_TEMPLATE=hivis next build",
     "start": "next start",
     "start:hivis": "NEXT_PUBLIC_CB_TEMPLATE=hivis next start --port 3001",

@@ -1,0 +1,61 @@
+# Every push to main that changes the site deploys it to https://staging.<domain>:
+# build the static site, back up what staging serves, sync the new files, check the site,
+# and put the backup back if a check fails. Promote a build that passed with "Web production".
+name: Web staging
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - web/**
+      - src/cpanel/**
+      - src/cli/cpanel.ts
+      - .github/workflows/web-staging.yml
+      - .github/actions/cpanel-ssh/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cpanel-staging
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    # Off until pnpm cpanel setup has stored the secrets and set CPANEL_ENABLED.
+    if: vars.CPANEL_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: https://staging.${{ vars.CPANEL_DOMAIN || 'contracting.bid' }}
+    timeout-minutes: 20
+    env:
+      CPANEL_HOST: ${{ secrets.CPANEL_HOST }}
+      CPANEL_USER: ${{ secrets.CPANEL_USER }}
+      CPANEL_PORT: ${{ secrets.CPANEL_PORT }}
+      CPANEL_DOMAIN: ${{ vars.CPANEL_DOMAIN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Test the site
+        working-directory: web
+        run: pnpm check
+      - name: Build the static site for staging
+        working-directory: web
+        run: pnpm build:export
+        env:
+          CB_SITE_ENV: staging
+      - run: pnpm cpanel stamp staging web/out --commit "$GITHUB_SHA"
+      - uses: ./.github/actions/cpanel-ssh
+        with:
+          ssh-key: ${{ secrets.CPANEL_SSH_KEY }}
+          known-hosts: ${{ secrets.CPANEL_KNOWN_HOSTS }}
+      - run: pnpm cpanel deploy staging web/out --commit "$GITHUB_SHA"
+      - if: always()
+        run: rm -rf "$RUNNER_TEMP/cpanel-ssh"

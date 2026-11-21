@@ -1,0 +1,46 @@
+# Creates staging.<domain> on the cPanel account and asks AutoSSL for certificates for
+# www.<domain>, <domain> and staging.<domain>. Safe to run again: it only adds what is missing.
+# Run it from Actions > cPanel provision > Run workflow. Leave "apply" off to only see the plan.
+name: cPanel provision
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: Make the changes (off = only report what is missing)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cpanel-host
+  cancel-in-progress: false
+
+jobs:
+  provision:
+    if: vars.CPANEL_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 20
+    env:
+      CPANEL_HOST: ${{ secrets.CPANEL_HOST }}
+      CPANEL_USER: ${{ secrets.CPANEL_USER }}
+      CPANEL_PORT: ${{ secrets.CPANEL_PORT }}
+      CPANEL_DOMAIN: ${{ vars.CPANEL_DOMAIN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/cpanel-ssh
+        with:
+          ssh-key: ${{ secrets.CPANEL_SSH_KEY }}
+          known-hosts: ${{ secrets.CPANEL_KNOWN_HOSTS }}
+      - run: pnpm cpanel provision ${{ inputs.apply && '--apply' || '' }}
+      - if: always()
+        run: rm -rf "$RUNNER_TEMP/cpanel-ssh"

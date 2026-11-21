@@ -1,0 +1,24 @@
+name: cPanel SSH key
+description: >-
+  Writes the cPanel deploy key and the host's known key from repository secrets into files only
+  this job can read, and points the pnpm cpanel commands at them. See docs/CPANEL.md.
+inputs:
+  ssh-key:
+    required: true
+  known-hosts:
+    required: true
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        KEY: ${{ inputs.ssh-key }}
+        KNOWN: ${{ inputs.known-hosts }}
+      run: |
+        set -euo pipefail
+        dir="$RUNNER_TEMP/cpanel-ssh"
+        install -m 700 -d "$dir"
+        ( umask 077; printf '%s\n' "$KEY" > "$dir/key"; printf '%s\n' "$KNOWN" > "$dir/known_hosts" )
+        test -s "$dir/known_hosts" || { echo "CPANEL_KNOWN_HOSTS is empty; run pnpm cpanel setup"; exit 1; }
+        echo "CPANEL_KEY_FILE=$dir/key" >> "$GITHUB_ENV"
+        echo "CPANEL_KNOWN_HOSTS_FILE=$dir/known_hosts" >> "$GITHUB_ENV"
