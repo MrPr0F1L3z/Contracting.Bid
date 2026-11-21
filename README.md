@@ -168,6 +168,8 @@ If you already have a certificate (for example from certbot), the dashboard can 
 
 This checkout is the dev stack. Committed builds go to staging with `pnpm stack deploy staging`, which builds and tests them; a build that passes goes to prod with `pnpm stack promote` in a maintenance window, once staging has 10 closeout runs that closed with no owner intervention. Prod has its own database, never runs simulations and never shows sim data. See [docs/STACKS.md](docs/STACKS.md).
 
+The customer site (`web/`) deploys to the cPanel host: every push to `main` goes to https://staging.contracting.bid, and a build that passed staging is promoted to https://www.contracting.bid in the maintenance window. One-time setup is `pnpm cpanel setup` on your machine. See [docs/CPANEL.md](docs/CPANEL.md).
+
 ## Database
 
 With `DATABASE_URL` set, every `hiring`, `bid`, `job` and `closeout` run is saved in Postgres instead of `runs/`: the report, every event as it happens, and the run's agents and approvals (including who decided). Dashboard logins live there too, and the dashboard's Past runs tab reads from it. Benchmarks (`bench`) are still files only.

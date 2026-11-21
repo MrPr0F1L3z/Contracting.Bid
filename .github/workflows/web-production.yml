@@ -1,0 +1,99 @@
+# Puts a build that passed staging on https://www.<domain>. Run it from
+# Actions > Web production > Run workflow. It:
+#   - refuses a commit that has not passed "Web staging",
+#   - refuses outside the maintenance window (PROD_MAINTENANCE_WINDOW, default every night
+#     22:00-06:00 America/Los_Angeles) unless "outside_window" is ticked,
+#   - by default only shows what would change (untick "dry_run" to deploy),
+#   - refuses to remove files the pipeline did not put there unless "replace_existing" is ticked,
+#   - backs up the live files first and puts them back if a check fails.
+name: Web production
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Commit or branch to promote (it must have passed Web staging)
+        default: main
+      dry_run:
+        description: Only show what would change
+        type: boolean
+        default: true
+      replace_existing:
+        description: Allow removing files on the live site that the pipeline did not put there (first deploy)
+        type: boolean
+        default: false
+      outside_window:
+        description: Emergency only - deploy outside the maintenance window
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: cpanel-production
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    if: vars.CPANEL_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://www.${{ vars.CPANEL_DOMAIN || 'contracting.bid' }}
+    timeout-minutes: 30
+    env:
+      CPANEL_HOST: ${{ secrets.CPANEL_HOST }}
+      CPANEL_USER: ${{ secrets.CPANEL_USER }}
+      CPANEL_PORT: ${{ secrets.CPANEL_PORT }}
+      CPANEL_DOMAIN: ${{ vars.CPANEL_DOMAIN }}
+      PROD_MAINTENANCE_WINDOW: ${{ vars.PROD_MAINTENANCE_WINDOW || 'daily 22:00-06:00' }}
+      PROD_MAINTENANCE_TZ: ${{ vars.PROD_MAINTENANCE_TZ || 'America/Los_Angeles' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - name: Find the commit
+        id: commit
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Check it passed staging
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.commit.outputs.sha }}
+        run: |
+          set -euo pipefail
+          passed=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/web-staging.yml/runs?head_sha=$SHA&status=success&per_page=1" --jq '.total_count')
+          if [ "$passed" = "0" ]; then
+            echo "::error::$SHA has not passed Web staging. Deploy it to staging first."
+            exit 1
+          fi
+          echo "$SHA passed Web staging."
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Check the maintenance window
+        if: ${{ !inputs.dry_run && !inputs.outside_window }}
+        run: pnpm cpanel window
+      - name: Outside the window
+        if: ${{ !inputs.dry_run && inputs.outside_window }}
+        run: echo "::warning::Deploying to production OUTSIDE the maintenance window, as asked."
+      - name: Build the static site for production
+        working-directory: web
+        run: pnpm build:export
+        env:
+          CB_SITE_ENV: production
+      - run: pnpm cpanel stamp production web/out --commit "${{ steps.commit.outputs.sha }}"
+      - uses: ./.github/actions/cpanel-ssh
+        with:
+          ssh-key: ${{ secrets.CPANEL_SSH_KEY }}
+          known-hosts: ${{ secrets.CPANEL_KNOWN_HOSTS }}
+      - run: >-
+          pnpm cpanel deploy production web/out --commit "${{ steps.commit.outputs.sha }}"
+          ${{ inputs.dry_run && '--dry-run' || '' }}
+          ${{ inputs.replace_existing && '--replace-existing' || '' }}
+      - if: always()
+        run: rm -rf "$RUNNER_TEMP/cpanel-ssh"

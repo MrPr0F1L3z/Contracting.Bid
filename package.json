@@ -17,7 +17,8 @@
     "gpu": "tsc -p tsconfig.json && node dist/src/cli/vllm.js",
     "sim": "tsc -p tsconfig.json && node dist/src/cli/sim.js",
     "db": "tsc -p tsconfig.json && node dist/src/cli/db.js",
-    "stack": "tsc -p tsconfig.json && node dist/src/cli/stack.js"
+    "stack": "tsc -p tsconfig.json && node dist/src/cli/stack.js",
+    "cpanel": "tsc -p tsconfig.json && node dist/src/cli/cpanel.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.7.0",
