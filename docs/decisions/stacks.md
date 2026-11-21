@@ -19,7 +19,7 @@ Tested: 600+ unit and functional tests, plus the whole pipeline run for real in 
 
 ## Made while building (please review)
 
-1. **What counts as "no human intervention".** Asked on a card; built as the recommended option until you answer: a full `closeout` run that ended **closed**, on real models, where every approval was automatic. Any approve or reject click disqualifies it. The other option (`approvals-only`: Approve clicks fine, no rejections or partial approvals) is one setting away: `PROMOTE_RUN_RULE=approvals-only`. Forced awards still count, since they are a sim setting rather than a human decision. *Question:* should a forced award disqualify a run?
+1. **What counts as "no human intervention".** **Decided (2026-11-21): no owner decisions at all.** A full `closeout` run that ended **closed**, on real models, where every approval was automatic. Any approve or reject click disqualifies it. The other option (`approvals-only`: Approve clicks fine, no rejections or partial approvals) is one setting away: `PROMOTE_RUN_RULE=approvals-only`. Forced awards still count, since they are a sim setting rather than a human decision. *Question:* should a forced award disqualify a run?
 2. **The 10 runs are counted across staging, not per build.** Re-earning 10 runs for every release would cost about $50 each time. Every later release still has to pass the staging checks. *Question:* per build instead?
 3. **All three stacks share this machine.** There is no other host. They are separate Compose projects with separate databases, ports and volumes.
 4. **The maintenance window is a setting**, in this machine's local time, with no default: promote refuses until you set it. `--outside-window` exists for emergencies and says so loudly.
