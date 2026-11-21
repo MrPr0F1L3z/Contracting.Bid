@@ -306,6 +306,7 @@ ${WORKSPACE_NAV.map((n) => `      <a href="#${n.view}" data-view="${n.view}">${n
     <div class="side-foot">
       <a id="settingsLink" class="foot-link" href="#settings/approvals" data-view="settings" hidden><span>Settings</span><span id="count" class="badge" hidden>0</span></a>
       <span id="conn" class="conn"></span>
+      <span id="stackBadge" class="pill" style="align-self:flex-start; justify-self:start" hidden></span>
       <span id="who"></span>
       <button id="logout" hidden>Sign out</button>
     </div>
@@ -731,7 +732,9 @@ ${SETTINGS_TABS.map((t) => `        <a href="#settings/${t.tab}" data-tab="${t.t
     const force = el("input", { type: "checkbox" });
     const stub = el("input", { type: "checkbox" });
     const forceLabel = el("label", { class: "check" }, force, el("span", { text: "Force award if the bid loses on price (simulation only)" }));
-    const sync = () => { job.disabled = command.value === "hiring"; forceLabel.hidden = !["job", "closeout"].includes(command.value); };
+    const auto = el("input", { type: "checkbox" });
+    const autoLabel = el("label", { class: "check" }, auto, el("span", { text: "Approve every gate automatically (simulation only). A closeout run that closes this way counts toward promoting to prod." }));
+    const sync = () => { job.disabled = command.value === "hiring"; forceLabel.hidden = !["job", "closeout"].includes(command.value); autoLabel.hidden = command.value === "hiring"; };
     command.addEventListener("change", sync);
     sync();
     const err = el("div", { class: "error", role: "alert" });
@@ -742,6 +745,7 @@ ${SETTINGS_TABS.map((t) => `        <a href="#settings/${t.tab}" data-tab="${t.t
         el("p", { class: "muted small", text: "Uses cloud models; each run has its own budget (RUN_BUDGET_USD). Up to " + launch.maxParallel + " runs at once (MAX_PARALLEL_RUNS)." })),
       el("div", { class: "row" }, command, job, seed),
       forceLabel,
+      autoLabel,
       el("label", { class: "check" }, stub, el("span", { text: "Scripted models: no Claude cost, always bids STUB-E02, approves every gate" })),
       el("div", { class: "row" }, go, el("span", { class: "muted small", text: launchNote })), err);
     form.addEventListener("submit", async (ev) => {
@@ -751,6 +755,7 @@ ${SETTINGS_TABS.map((t) => `        <a href="#settings/${t.tab}" data-tab="${t.t
       if (!job.disabled && job.value) body.job = job.value;
       if (seed.value.trim()) body.seed = seed.value.trim();
       if (!forceLabel.hidden && force.checked) body.forceAward = true;
+      if (!autoLabel.hidden && auto.checked) body.autoApprove = true;
       try {
         launch = { ...launch, ...(await api("/api/launch", { method: "POST", body: JSON.stringify(body) })) };
         launchNote = "Started.";
@@ -800,6 +805,13 @@ ${SETTINGS_TABS.map((t) => `        <a href="#settings/${t.tab}" data-tab="${t.t
     $("login").hidden = true; $("login").replaceChildren();
     signed = true;
     $("nav").hidden = false; $("settingsLink").hidden = false; $("logout").hidden = false; $("who").textContent = me.username;
+    if (me.stack) {
+      // Says which stack this is, so staging is never mistaken for prod.
+      const badge = $("stackBadge");
+      badge.textContent = me.stack === "prod" ? "Production" : me.stack === "staging" ? "Staging" : "Dev";
+      badge.className = "pill " + (me.stack === "prod" ? "info" : "warning");
+      badge.hidden = false;
+    }
     show();
     connect();
   }

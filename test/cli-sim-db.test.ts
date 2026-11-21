@@ -40,7 +40,7 @@ describe("pnpm sim with a database (functional, embedded Postgres)", () => {
   it("applies pending migrations before a run", async () => {
     const fresh = pgliteDb();
     expect(await main(["hiring", "--stub", "--seed", "1"], { ...deps(), db: fresh })).toBe(0);
-    expect(lines[0]).toBe("Database: applied 001_init.sql, 002_runs_users.sql, 003_run_started_by.sql.");
+    expect(lines[0]).toBe("Database: applied 001_init.sql, 002_runs_users.sql, 003_run_started_by.sql, 004_stack_identity.sql.");
     lines = [];
     expect(await main(["hiring", "--stub", "--seed", "2"], { ...deps(), db: fresh })).toBe(0);
     expect(lines.some((l) => l.startsWith("Database:"))).toBe(false);
@@ -258,5 +258,67 @@ describe("pnpm sim with a database (functional, embedded Postgres)", () => {
     });
     expect(await runs.report("terminal")).toBeNull();
     expect(await runs.interruptDashboardRuns("again")).toEqual([]);
+  }, 30_000);
+  it("on prod, serve has no Start a run, and says which stack and build it is", async () => {
+    const u = await newUser("owner", PASSWORD);
+    await new PgUserStore(db).put(u);
+    let health: unknown;
+    let me: Record<string, unknown> | undefined;
+    let launch: Record<string, unknown> | undefined;
+    let loginBody: unknown;
+    const code = await main(["serve"], {
+      ...deps(),
+      env: { ...env, APP_STACK: "prod", APP_BUILD: "abc123def456" },
+      untilStopped: async () => {
+        const base = lines.find((l) => l.startsWith("Owner dashboard: "))!.slice("Owner dashboard: ".length).replace(/\/$/, "");
+        health = await (await fetch(`${base}/healthz`)).json();
+        const login = await fetch(`${base}/api/login`, {
+          method: "POST",
+          headers: { "x-requested-with": "dashboard" },
+          body: JSON.stringify({ username: "owner", password: PASSWORD, code: totpCode(u.totpSecret, Math.floor(Date.now() / 30_000)) }),
+        });
+        loginBody = await login.json();
+        const cookie = login.headers.get("set-cookie")!.split(";")[0]!;
+        const get = async (path: string) => (await fetch(`${base}${path}`, { headers: { cookie } })).json() as Promise<Record<string, unknown>>;
+        me = await get("/api/me");
+        launch = await get("/api/launch");
+      },
+    });
+    expect(code).toBe(0);
+    expect(lines).toContain("The prod stack does not start sim runs. Press Ctrl+C to stop.");
+    expect(health).toEqual({ ok: true, stack: "prod", build: "abc123def456" });
+    expect(me).toMatchObject({ username: "owner", stack: "prod" });
+    expect(loginBody).toMatchObject({ username: "owner", stack: "prod" });
+    expect(launch).toEqual({ error: "This dashboard cannot start runs. Start it with: pnpm sim serve" });
+  }, 30_000);
+
+  it("on prod, every sim run command refuses before it opens the database", async () => {
+    const untouchable: Db = {
+      query: async () => { throw new Error("prod must not touch the database for a sim run"); },
+      exec: async () => { throw new Error("prod must not touch the database for a sim run"); },
+      transaction: async () => { throw new Error("prod must not touch the database for a sim run"); },
+      close: async () => undefined,
+    };
+    for (const cmd of [["hiring", "--stub"], ["bench", "--stub"], ["bid", "--stub"], ["job", "--stub"], ["closeout", "--stub", "--auto-approve"]]) {
+      lines = [];
+      expect(await main(cmd, { ...deps(), db: untouchable, env: { ...env, APP_STACK: "prod" } })).toBe(3);
+      expect(lines).toEqual([`The prod stack never runs simulations, so its database holds only real data. Run "${cmd[0]}" on dev or staging.`]);
+    }
+    lines = [];
+    expect(await main(["closeout", "--stub"], { ...deps(), env: { ...env, APP_STACK: "nope" } })).toBe(2);
+    expect(lines).toEqual(['APP_STACK must be one of dev, staging, prod, not "nope"']);
+  });
+
+  it("refuses a database that belongs to another stack, before migrating it", async () => {
+    expect(await main(["hiring", "--stub", "--seed", "1"], { ...deps(), env: { ...env, APP_STACK: "staging" } })).toBe(0);
+    lines = [];
+    expect(await main(["user", "list"], { ...deps(), env: { ...env, APP_STACK: "prod" } })).toBe(2);
+    expect(lines).toEqual(["Database: This database belongs to the staging stack, but APP_STACK is prod. Point DATABASE_URL at the prod database."]);
+  }, 30_000);
+
+  it("records how a run was set up, for the promotion gate", async () => {
+    expect(await main(["closeout", "--stub", "--seed", "1"], { ...deps(), env: { ...env, APP_BUILD: "abc123def456" } })).toBe(0);
+    const row = (await db.query<{ model_config: Record<string, unknown> }>("SELECT model_config FROM runs")).rows[0]!;
+    expect(row.model_config).toMatchObject({ stub: true, autoApprove: true, build: "abc123def456" });
   }, 30_000);
 });

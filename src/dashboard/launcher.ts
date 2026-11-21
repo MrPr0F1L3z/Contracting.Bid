@@ -16,6 +16,8 @@ export interface LaunchRequest {
   forceAward?: boolean;
   /** Scripted models: no API key and no cost. */
   stub?: boolean;
+  /** bid, job and closeout: approve every gate without asking (simulation only). Such runs can count toward promotion to prod. */
+  autoApprove?: boolean;
 }
 
 export interface LaunchJob {
@@ -66,7 +68,7 @@ export function maxParallelRuns(value: string | undefined): number {
 /** Validates a run request posted by the page. Returns an error message or the request. */
 export function parseLaunch(body: unknown, jobs: readonly string[]): LaunchRequest | string {
   if (typeof body !== "object" || body === null || Array.isArray(body)) return "Body must be a JSON object";
-  const { command, job, seed, forceAward, stub } = body as Record<string, unknown>;
+  const { command, job, seed, forceAward, stub, autoApprove } = body as Record<string, unknown>;
   if (typeof command !== "string" || !(LAUNCH_COMMANDS as readonly string[]).includes(command)) return `command must be one of ${LAUNCH_COMMANDS.join(", ")}`;
   const c = command as LaunchCommand;
   const req: LaunchRequest = { command: c };
@@ -89,6 +91,11 @@ export function parseLaunch(body: unknown, jobs: readonly string[]): LaunchReque
     if (stub !== true) return "stub must be true or false";
     req.stub = true;
   }
+  if (autoApprove !== undefined && autoApprove !== false) {
+    if (autoApprove !== true) return "autoApprove must be true or false";
+    if (c === "hiring") return "Approve every gate is only for bid, job and closeout runs";
+    req.autoApprove = true;
+  }
   return req;
 }
 
@@ -99,6 +106,7 @@ export function launchArgv(req: LaunchRequest): string[] {
   if (req.seed !== undefined) argv.push("--seed", String(req.seed));
   if (req.forceAward) argv.push("--force-award");
   if (req.stub) argv.push("--stub");
+  if (req.autoApprove) argv.push("--auto-approve");
   return argv;
 }
 

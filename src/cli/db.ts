@@ -8,6 +8,8 @@ import { PgUserStore, RunStore, type RunRow, type StoredReport } from "../db/sto
 import { formatLocal, parseCutoff } from "./cutoff.js";
 import { usersFile } from "./dashboardCli.js";
 import { loadDotEnv } from "../config/dotenv.js";
+import { REFUSED_ON_STACK, allowsSimRuns, stackFromEnv, type Stack } from "../config/stack.js";
+import { claimDatabase, refuseOtherStack } from "../db/stackIdentity.js";
 
 export const DB_USAGE = `Usage:
   pnpm db migrate              apply new schema migrations (db/migrations); runs do this themselves too
@@ -69,6 +71,18 @@ export async function main(argv: string[], deps: DbDeps = {}): Promise<number> {
     }
     cutoff = read;
   }
+  let stack: Stack;
+  try {
+    stack = stackFromEnv(env);
+  } catch (err) {
+    out(err instanceof Error ? err.message : String(err));
+    return 2;
+  }
+  if (command === "import" && !allowsSimRuns(stack)) {
+    // Saved reports are sim runs; the prod database holds only real data.
+    out(`The ${stack} stack holds no sim data, so pnpm db import is turned off there.`);
+    return REFUSED_ON_STACK;
+  }
   const db = deps.db ?? openDb(env);
   if (!db) {
     out("Set DATABASE_URL first (see .env.example).");
@@ -81,7 +95,9 @@ export async function main(argv: string[], deps: DbDeps = {}): Promise<number> {
       for (const m of migrations) out(`${done.has(m.name) ? "applied" : "pending"}  ${m.name}`);
       return 0;
     }
+    await refuseOtherStack(db, stack);
     const applied = await migrate(db, migrations);
+    await claimDatabase(db, stack);
     if (command === "migrate") {
       out(applied.length ? `Applied ${applied.join(", ")}.` : "The database is up to date.");
       return 0;

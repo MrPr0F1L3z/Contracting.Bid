@@ -164,6 +164,10 @@ Caddy forwards to the dashboard service over the Compose network; the dashboard 
 
 If you already have a certificate (for example from certbot), the dashboard can serve HTTPS itself instead: set `DASHBOARD_HOST=0.0.0.0`, `DASHBOARD_TLS_CERT` and `DASHBOARD_TLS_KEY`. It refuses to serve plain HTTP on anything but 127.0.0.1, except inside the Compose service, where `DASHBOARD_IN_CONTAINER=1` allows it because the port is published only on this machine's 127.0.0.1.
 
+## Dev, staging and prod
+
+This checkout is the dev stack. Committed builds go to staging with `pnpm stack deploy staging`, which builds and tests them; a build that passes goes to prod with `pnpm stack promote` in a maintenance window, once staging has 10 closeout runs that closed with no owner intervention. Prod has its own database, never runs simulations and never shows sim data. See [docs/STACKS.md](docs/STACKS.md).
+
 ## Database
 
 With `DATABASE_URL` set, every `hiring`, `bid`, `job` and `closeout` run is saved in Postgres instead of `runs/`: the report, every event as it happens, and the run's agents and approvals (including who decided). Dashboard logins live there too, and the dashboard's Past runs tab reads from it. Benchmarks (`bench`) are still files only.

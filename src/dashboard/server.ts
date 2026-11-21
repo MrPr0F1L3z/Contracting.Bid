@@ -11,6 +11,7 @@ import { projectJobs, workspaceStats, type WorkspaceJob, type WorkspaceStats } f
 import { STUB_OPPORTUNITIES } from "../opportunities/stub.js";
 import { fontFile } from "./fonts.js";
 import type { RunLauncher } from "./launcher.js";
+import type { Stack } from "../config/stack.js";
 import { LoginLimiter, SessionStore, hashPassword, readCookie, verifyPassword, verifyTotp, type Session, type UserStore } from "./auth.js";
 
 export interface DashboardOptions {
@@ -45,6 +46,10 @@ export interface DashboardOptions {
   };
   /** Lets signed-in users start runs from the page (the always-on service). */
   launcher?: RunLauncher;
+  /** The stack this dashboard serves (dev, staging or prod), shown on the page and at /healthz. */
+  stack?: Stack;
+  /** The build it runs (APP_BUILD, a commit), reported at /healthz so a deploy can check it. */
+  build?: string;
 }
 
 const LOOPBACK = new Set(["127.0.0.1", "::1", "localhost"]);
@@ -398,7 +403,7 @@ export class DashboardServer {
     this.limiter.succeed(...keys);
     await this.o.users.put({ ...user, lastTotpStep: step });
     const s = this.sessions.create(user.username);
-    this.send(res, 200, { username: s.username, csrf: s.csrf }, { "set-cookie": this.sessionCookie(s.id, 12 * 60 * 60) });
+    this.send(res, 200, { username: s.username, csrf: s.csrf, stack: this.o.stack ?? "dev" }, { "set-cookie": this.sessionCookie(s.id, 12 * 60 * 60) });
   }
 
   private async route(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -419,6 +424,8 @@ export class DashboardServer {
       res.end(bytes);
       return;
     }
+    // For deploys and uptime checks: no sign-in, and nothing about runs or users.
+    if (req.method === "GET" && url.pathname === "/healthz") return this.send(res, 200, { ok: true, stack: this.o.stack ?? "dev", build: this.o.build ?? null });
     if (!url.pathname.startsWith("/api/")) return this.send(res, 404, { error: "Not found" });
     if (req.method === "POST" && !this.sameOriginPost(req)) return this.send(res, 403, { error: "Requests must come from the dashboard page" });
     if (req.method === "POST" && url.pathname === "/api/login") return this.login(req, res);
@@ -427,7 +434,7 @@ export class DashboardServer {
     if (!session) return this.send(res, 401, { error: "Sign in first" });
     if (req.method === "POST" && !csrfMatches(req.headers["x-csrf-token"], session.csrf)) return this.send(res, 403, { error: "Missing or wrong CSRF token" });
 
-    if (req.method === "GET" && url.pathname === "/api/me") return this.send(res, 200, { username: session.username, csrf: session.csrf });
+    if (req.method === "GET" && url.pathname === "/api/me") return this.send(res, 200, { username: session.username, csrf: session.csrf, stack: this.o.stack ?? "dev" });
     if (req.method === "POST" && url.pathname === "/api/logout") {
       this.sessions.end(session.id);
       return this.send(res, 200, { ok: true }, { "set-cookie": this.sessionCookie("", 0) });
