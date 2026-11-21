@@ -287,6 +287,20 @@ describe("deploy pipeline (dev -> staging -> prod)", () => {
     expect(lines.some((l) => l.startsWith("OUTSIDE the maintenance window"))).toBe(true);
   });
 
+  it("reads the window in PROD_MAINTENANCE_TZ", async () => {
+    await pipeline().deployStaging(undefined);
+    const env = { PROD_MAINTENANCE_WINDOW: "daily 22:00-06:00", PROD_MAINTENANCE_TZ: "America/Los_Angeles" };
+    m.t = new Date("2026-11-21T20:00:00Z").getTime(); // 12:00 PST
+    lines = [];
+    expect(await pipeline(env).promote({ yes: true })).toBe(2);
+    expect(lines[1]).toBe("Prod changes only in a maintenance window (daily 22:00-06:00, America/Los_Angeles). Next one opens Sat, Nov 21, 2026, 22:00 PST (America/Los_Angeles).");
+    m.t = new Date("2026-11-22T07:00:00Z").getTime(); // 23:00 PST
+    expect(await pipeline(env).promote({ yes: true })).toBe(0);
+    lines = [];
+    expect(await pipeline({ ...env, PROD_MAINTENANCE_TZ: "Pacific" }).promote({ yes: true })).toBe(2);
+    expect(lines.at(-1)).toMatch(/^PROD_MAINTENANCE_TZ must be a time zone name/);
+  });
+
   it("asks before it changes prod, and changes nothing on no", async () => {
     await pipeline().deployStaging(undefined);
     answers = [false];

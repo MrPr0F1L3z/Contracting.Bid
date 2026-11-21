@@ -38,9 +38,10 @@ Prod never runs simulations: every sim command refuses there, its dashboard has 
 
 1. Add to `.env` (it stays on this machine):
    ```
-   PROD_MAINTENANCE_WINDOW=Sun 02:00-04:00
+   PROD_MAINTENANCE_WINDOW=daily 22:00-06:00
+   PROD_MAINTENANCE_TZ=America/Los_Angeles
    ```
-   Times are this machine's local time. Several windows: `Sun 02:00-04:00, Wed 23:00-00:30`. `daily 03:00-04:00` works too.
+   That is your window: every night from 10 pm to 6 am Pacific time (it follows daylight saving time). A window that ends before it starts runs past midnight. Other forms: `Sun 02:00-04:00`, several separated by commas. Without `PROD_MAINTENANCE_TZ` the times are this machine's local time.
 2. Deploy staging: `pnpm stack deploy staging`. The first time, it stops at **dashboard login exists**, because the new database has no logins. Add one, then deploy again:
    ```
    pnpm stack user staging add owner
@@ -64,7 +65,8 @@ pnpm stack user staging|prod add|list|passwd|reset-code|remove NAME
 
 | Setting | Default | What it does |
 |---|---|---|
-| `PROD_MAINTENANCE_WINDOW` | none (promote refuses) | when prod may change |
+| `PROD_MAINTENANCE_WINDOW` | none (promote refuses) | when prod may change; yours is `daily 22:00-06:00` |
+| `PROD_MAINTENANCE_TZ` | this machine's time zone | the time zone of the window, such as `America/Los_Angeles` |
 | `PROMOTE_MIN_RUNS` | 10 | unattended closeout runs staging needs |
 | `PROMOTE_RUN_RULE` | `no-owner-decisions` | or `approvals-only`: Approve clicks are fine, rejections and partial approvals are not |
 | `PROD_PUBLIC` | off | `1` starts Caddy with prod, serving `DASHBOARD_DOMAIN` over HTTPS |

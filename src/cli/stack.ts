@@ -23,8 +23,9 @@ to staging. PASS: promote to prod in a maintenance window. FAIL: a report says w
 fix it on dev, commit, deploy to staging again.
 
 Promotion needs PROMOTE_MIN_RUNS (default 10) closeout runs on staging that closed with no
-owner intervention (PROMOTE_RUN_RULE), and runs only inside PROD_MAINTENANCE_WINDOW (this
-machine's time, for example "Sun 02:00-04:00") unless you add --outside-window. It asks before
+owner intervention (PROMOTE_RUN_RULE), and runs only inside PROD_MAINTENANCE_WINDOW (for example
+"daily 22:00-06:00", in PROD_MAINTENANCE_TZ such as America/Los_Angeles, else this machine's time)
+unless you add --outside-window. It asks before
 it changes prod unless you add --yes. Builds, reports, backups and the deploy ledger are kept in
 STACKS_DIR (default ~/.local/share/contracting-bid/stacks).`;
 

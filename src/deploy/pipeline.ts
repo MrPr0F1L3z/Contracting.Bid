@@ -5,7 +5,7 @@ import type { Stack } from "../config/stack.js";
 import type { Db } from "../db/db.js";
 import { evaluateGate, gateRuns, minUnattendedRuns, unattendedRule, type GateResult } from "./gate.js";
 import { Ledger, type Deployment, type StepResult } from "./ledger.js";
-import { currentWindow, nextWindowStart, parseWindows } from "./window.js";
+import { checkTimeZone, currentWindow, formatIn, nextWindowStart, parseWindows } from "./window.js";
 
 /** What a command printed and how it ended. */
 export interface ExecResult {
@@ -409,17 +409,19 @@ export class Pipeline {
     }
     this.out(`Gate: ${gate.counted} unattended successful runs on staging (needs ${gate.needed}).`);
     let windows;
+    let tz: string | undefined;
     try {
       windows = parseWindows(this.d.env.PROD_MAINTENANCE_WINDOW);
+      tz = checkTimeZone(this.d.env.PROD_MAINTENANCE_TZ);
     } catch (err) {
       this.out(err instanceof Error ? err.message : String(err));
       return 2;
     }
     const now = this.d.now();
-    const open = currentWindow(windows, now);
+    const open = currentWindow(windows, now, tz);
     if (!open && !opts.outsideWindow) {
-      const next = nextWindowStart(windows, now);
-      this.out(`Prod changes only in a maintenance window (${windows.map((w) => w.text).join(", ")}, this machine's time). Next one opens ${next ? next.toString() : "never"}.`);
+      const next = nextWindowStart(windows, now, tz);
+      this.out(`Prod changes only in a maintenance window (${windows.map((w) => w.text).join(", ")}, ${tz ?? "this machine's time"}). Next one opens ${next ? formatIn(next, tz) : "never"}.`);
       this.out("To deploy now anyway, add --outside-window.");
       return 2;
     }
