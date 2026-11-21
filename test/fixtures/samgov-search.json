@@ -1,0 +1,57 @@
+{
+  "totalRecords": 5,
+  "limit": 1000,
+  "offset": 0,
+  "opportunitiesData": [
+    {
+      "noticeId": "0a1b2c3d4e5f60718293a4b5c6d7e8f9",
+      "title": "Roof replacement, Building 300",
+      "solicitationNumber": "EX-26-R-0001",
+      "fullParentPathName": "EXAMPLE DEPARTMENT.EXAMPLE SUBAGENCY.EXAMPLE OFFICE",
+      "postedDate": "2026-11-10",
+      "type": "Solicitation",
+      "baseType": "Solicitation",
+      "typeOfSetAsideDescription": "Total Small Business Set-Aside (FAR 19.5)",
+      "typeOfSetAside": "SBA",
+      "reponseDeadLine": "2026-12-15T14:00:00-05:00",
+      "naicsCode": "238160",
+      "classificationCode": "Z2JZ",
+      "active": "Yes",
+      "placeOfPerformance": { "city": { "code": "0001", "name": "Exampleville" }, "state": { "code": "VA", "name": "Virginia" }, "zip": "00000" },
+      "description": "https://api.sam.gov/prod/opportunities/v1/noticedesc?noticeid=0a1b2c3d4e5f60718293a4b5c6d7e8f9",
+      "uiLink": "https://sam.gov/opp/0a1b2c3d4e5f60718293a4b5c6d7e8f9/view"
+    },
+    {
+      "noticeId": "1b2c3d4e5f60718293a4b5c6d7e8f9a0",
+      "title": "Parking lot mill and overlay",
+      "fullParentPathName": "EXAMPLE DEPARTMENT.OTHER OFFICE",
+      "type": "Combined Synopsis/Solicitation",
+      "responseDeadLine": "2026-12-01",
+      "naicsCode": "237310",
+      "active": "Yes",
+      "placeOfPerformance": { "state": { "name": "Colorado" } },
+      "description": "Description Not Found"
+    },
+    {
+      "noticeId": "2c3d4e5f60718293a4b5c6d7e8f9a0b1",
+      "title": "Janitorial services",
+      "type": "Solicitation",
+      "naicsCode": "561720",
+      "active": "Yes"
+    },
+    {
+      "noticeId": "3d4e5f60718293a4b5c6d7e8f9a0b1c2",
+      "title": "Award: paving",
+      "type": "Award Notice",
+      "naicsCode": "237310",
+      "active": "Yes"
+    },
+    {
+      "noticeId": "4e5f60718293a4b5c6d7e8f9a0b1c2d3",
+      "title": "Archived HVAC job",
+      "type": "Solicitation",
+      "naicsCode": "238220",
+      "active": "No"
+    }
+  ]
+}

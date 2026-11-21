@@ -29,10 +29,10 @@ describe("site constants", () => {
 });
 
 describe("SiteWorld", () => {
-  it("refuses a job with no duration", () => {
-    const bid = new BidWorld(job("STUB-E02"), new SeededRng(1));
-    const fake = Object.assign(Object.create(Object.getPrototypeOf(bid)), bid, { opportunity: { ...job("STUB-E02"), noticeId: "STUB-ZZ" } });
-    expect(() => new SiteWorld(fake, 1, new SeededRng(1), [])).toThrow("No simulated duration for STUB-ZZ");
+  it("takes its contract time from the bid world", () => {
+    const bid = new BidWorld({ ...job("STUB-E02"), noticeId: "REAL-1" }, new SeededRng(1));
+    for (const t of bid.requiredTrades) bid.select(bid.quotesFor(t)[0]!.quoteId);
+    expect(new SiteWorld(bid, 100_000, new SeededRng(1), []).contractDays).toBe(bid.contractDays);
   });
 
   it("sets contract time, liquidated damages and durations that leave 10% float", () => {

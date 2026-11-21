@@ -40,7 +40,7 @@ describe("pnpm sim with a database (functional, embedded Postgres)", () => {
   it("applies pending migrations before a run", async () => {
     const fresh = pgliteDb();
     expect(await main(["hiring", "--stub", "--seed", "1"], { ...deps(), db: fresh })).toBe(0);
-    expect(lines[0]).toBe("Database: applied 001_init.sql, 002_runs_users.sql, 003_run_started_by.sql, 004_stack_identity.sql.");
+    expect(lines[0]).toBe("Database: applied 001_init.sql, 002_runs_users.sql, 003_run_started_by.sql, 004_stack_identity.sql, 005_listing_cache.sql.");
     lines = [];
     expect(await main(["hiring", "--stub", "--seed", "2"], { ...deps(), db: fresh })).toBe(0);
     expect(lines.some((l) => l.startsWith("Database:"))).toBe(false);
@@ -224,6 +224,32 @@ describe("pnpm sim with a database (functional, embedded Postgres)", () => {
     expect((await new RunStore(db).list()).map((r) => r.runId).sort()).toEqual(["bid-cloud-2026-11-10T00-00-00-000Z-2", "hiring-cloud-2026-11-10T00-00-00-000Z-3"]);
     expect((await db.query("SELECT DISTINCT started_by FROM runs")).rows).toEqual([{ started_by: "dashboard:owner" }]);
   }, 30_000);
+
+  it("serve offers SAM.gov jobs when JOB_SOURCE=samgov, cached in the database", async () => {
+    const u = await newUser("owner", PASSWORD);
+    await new PgUserStore(db).put(u);
+    const listing = { noticeId: "abc", title: "Paint stairwells", type: "Solicitation", naicsCode: "238320", active: "Yes" };
+    let calls = 0;
+    const samFetch = async () => (calls++, { ok: true, status: 200, json: async () => ({ totalRecords: 1, opportunitiesData: [listing] }), text: async () => "" });
+    let jobs: unknown;
+    await main(["serve"], {
+      ...deps(),
+      env: { ...env, JOB_SOURCE: "samgov", SAM_GOV_API_KEY: "k" },
+      samFetch,
+      untilStopped: async () => {
+        jobs = (await (await signIn(u.totpSecret))("/api/launch")).jobs;
+      },
+    });
+    expect(lines[0]).toBe("Offering 1 samgov job(s) in Start a run (restart the service to read new listings).");
+    expect(jobs).toEqual([{ noticeId: "abc", title: "Paint stairwells", complexity: "easy" }]);
+    expect(calls).toBe(2);
+    expect((await db.query("SELECT source, requests FROM listing_cache")).rows).toEqual([{ source: "samgov", requests: 2 }]);
+  }, 30_000);
+
+  it("serve still starts when SAM.gov is not set up, offering no jobs", async () => {
+    await main(["serve"], { ...deps(), env: { ...env, JOB_SOURCE: "samgov" }, untilStopped: async () => undefined });
+    expect(lines[0]).toMatch(/^JOB_SOURCE=samgov needs SAM_GOV_API_KEY.*\. Start a run offers no jobs; fix the setting and restart\.$/);
+  });
 
   it("serve refuses a bad MAX_PARALLEL_RUNS", async () => {
     expect(await main(["serve"], { ...deps(), env: { ...env, MAX_PARALLEL_RUNS: "0" } })).toBe(2);

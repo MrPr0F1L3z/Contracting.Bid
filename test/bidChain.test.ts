@@ -51,6 +51,17 @@ describe("bidPackage", () => {
 });
 
 describe("runBidChain (functional, scripted models)", () => {
+  it("fills in the picked job's details before the agents see it", async () => {
+    const seen: string[] = [];
+    const providers = stubBidProviders();
+    const describe = async (o: typeof e02) => (seen.push(o.noticeId), { ...o, scopeSummary: "Described scope." });
+    const r = await runBidChain(opts(1, { router: new ModelRouter(providers), describe }));
+    expect(seen).toEqual([STUB_BID_JOB]);
+    const brief = providers.claude.requests[2]?.messages[0]?.content[0];
+    expect(brief).toMatchObject({ type: "text", text: expect.stringContaining("Scope: Described scope.") });
+    expect(r.outcome).toBe("awarded");
+  });
+
   it("staffs the bid team, prices the job and wins it (seed 1)", async () => {
     const asked: string[] = [];
     const providers = stubBidProviders();
@@ -76,6 +87,8 @@ describe("runBidChain (functional, scripted models)", () => {
     expect(types[0]).toBe("run_started");
     expect(types).toEqual(expect.arrayContaining(["opportunity_found", "opportunity_decided", "estimate_submitted", "quotes_received", "quote_selected", "bid_submitted", "award_decided"]));
     expect(r.events.at(-1)).toMatchObject({ type: "run_finished", payload: { outcome: "awarded" } });
+    // A stub job names its source and agency, and keeps no listing copy.
+    expect(r.events.find((e) => e.type === "opportunity_found")!.payload).toEqual({ noticeId: STUB_BID_JOB, title: e02.title, complexity: "easy", agency: e02.agency, source: "stub" });
     expect(providers.claude.remaining()).toBe(0);
     expect(providers.local.remaining()).toBe(0);
     // The PM sees the bid package; the Estimator never sees the hidden costs.

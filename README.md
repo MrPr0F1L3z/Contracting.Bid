@@ -2,7 +2,7 @@
 
 A general contracting company run by AI agents. The agents fill the company's roles, from President down to Bookkeeper, and the human owner only approves hires, money and contracts.
 
-**Status:** sandboxed proof of concept. Nothing here talks to real clients, vendors, banks or bid portals. Jobs come from a stub of made-up federal construction solicitations; a read-only SAM.gov source comes in a later sprint.
+**Status:** sandboxed proof of concept. Nothing here talks to real clients, vendors, banks or bid portals. Jobs come from a stub of made-up federal construction solicitations, or, if you set it up, from real SAM.gov listings, read-only (see [Real jobs from SAM.gov](#real-jobs-from-samgov)). Either way the bid, the job and the money stay inside the simulation.
 
 ## How it works
 
@@ -104,6 +104,25 @@ pnpm sim closeout --job STUB-E02 --force-award    # the same with real models; y
 
 `closeout` takes the same flags as `job`. After the job finishes, HR hires a Bookkeeper (you approve). The Bookkeeper drafts the final invoice, which you approve before it is sent. It must equal the contract price plus approved change orders, less liquidated damages; a wrong invoice is returned and delays payment. The Bookkeeper then pays every subcontractor and vendor bill, and you approve each payment run. The government pays in 30 days. If the seed drew `late-payment`, it pays late and holds back part of the invoice, and the Bookkeeper decides whether to claim Prompt Payment Act interest and whether to submit closeout documents to release the money held back. The PM then asks you to close the project. The report ends with the cash position: received, paid out and cash profit.
 
+## Real jobs from SAM.gov
+
+Runs can bid real, current federal construction solicitations instead of the made-up ones. Contracting.Bid only reads listings from SAM.gov; it never submits anything, and the bid, the subcontractors, the award and the money are still simulated.
+
+1. Get a public API key: sign in at [SAM.gov](https://sam.gov), open **Account Details** from your profile, enter your password, and copy the **Public API Key** it shows.
+2. In `.env`, set `SAM_GOV_API_KEY` to that key and `JOB_SOURCE=samgov`. Optional: `SAMGOV_STATE` (two letters), `SAMGOV_NAICS` (codes, comma separated), `SAMGOV_LOOKBACK_DAYS` (default 30).
+3. Check what comes back:
+
+```bash
+pnpm sim listings                         # the jobs a run can bid, soonest due first
+pnpm sim listings --refresh               # read SAM.gov now instead of the cache
+pnpm sim closeout --job NOTICE_ID --force-award
+pnpm sim bid --source stub                # the made-up jobs, whatever JOB_SOURCE says
+```
+
+SAM.gov allows only a few requests a day per key, so listings are cached (in the database, or in `data/samgov-listings.json` without one) and read again at most every `SAMGOV_CACHE_HOURS` (default 24). A read asks for solicitations and combined synopses posted in the window and keeps active ones under construction NAICS codes (236, 237, 238); that is two requests, or two per code in `SAMGOV_NAICS`. A run fetches the description of the one job it bids, once, and keeps it in the cache. If SAM.gov is down or over the limit, the cached listings are used.
+
+A real listing has no written-out scope, so the world infers its trades from the NAICS code and the words in the notice, and draws its hidden value (when the notice gives no estimate) and its contract time from the seed. Each run keeps a copy of the listing it bid in its `opportunity_found` event. The always-on dashboard offers the listings it read when it started; restart it to pick up new ones.
+
 ## Approving batches
 
 Some approvals cover several items: all the subcontracts on a job, or a payment run of several bills. The terminal lists each item. Answer `y` to approve them all, `i` to go through them one by one, or anything else to reject the batch with your text as the reason. Items you leave out come back to the agent, which can ask again for them.
@@ -185,7 +204,7 @@ The sim runs on this machine, so `DATABASE_URL` uses `localhost`, not the contai
 
 ## Tests
 
-Every function has unit tests. Tests use scripted stub models and saved fixtures, so they never call Claude, vLLM or SAM.gov and cost nothing.
+Every function has unit tests. Tests use scripted stub models and saved fixtures (`test/fixtures/samgov-search.json` is made up), so they never call Claude, vLLM or SAM.gov and cost nothing.
 
 ```bash
 pnpm test

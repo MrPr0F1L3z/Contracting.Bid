@@ -1,6 +1,7 @@
 import type { Opportunity } from "../opportunities/types.js";
 import type { ScheduledProblem } from "../sim/problems.js";
 import type { SeededRng } from "../sim/rng.js";
+import { simulatedScope } from "./scope.js";
 
 /** Trades the simulated subcontractor market quotes. Agents must use these names. */
 export const TRADES = [
@@ -31,7 +32,7 @@ export function isTrade(value: string): value is Trade {
 }
 
 /**
- * The trades each stub job really needs, with each trade's share of the
+ * The trades each stub job really needs (a real listing's are inferred; see scope.ts), with each trade's share of the
  * subcontracted cost. The world knows this; the Estimator has to work it out
  * from the scope text. A bid that leaves out a required trade is not responsive.
  */
@@ -75,6 +76,10 @@ const round100 = (usd: number) => Math.round(usd / 100) * 100;
  */
 export class BidWorld {
   readonly requiredTrades: Trade[];
+  /** Working days the contract allows, used once the job is awarded. */
+  readonly contractDays: number;
+  /** The value range the world's costs are drawn from: the notice's estimate, or a seeded one. */
+  readonly valueUsd: { min: number; max: number };
   /** What the subcontracted work really costs, by trade. Hidden from agents. */
   readonly trueCost: ReadonlyMap<Trade, number>;
   private readonly quotes = new Map<Trade, Quote[]>();
@@ -87,10 +92,12 @@ export class BidWorld {
     rng: SeededRng,
     problems: readonly ScheduledProblem[] = [],
   ) {
-    const scope = JOB_SCOPES[opportunity.noticeId];
-    if (!scope || !opportunity.estimatedValueUsd) throw new Error(`No simulated scope for ${opportunity.noticeId}`);
+    const { trades: scope, valueUsd, contractDays } = simulatedScope(opportunity, rng);
+    if (!scope.length) throw new Error(`No simulated scope for ${opportunity.noticeId}`);
     this.rng = rng.fork("market");
-    const { min, max } = opportunity.estimatedValueUsd;
+    this.valueUsd = valueUsd;
+    this.contractDays = contractDays;
+    const { min, max } = valueUsd;
     // Sub costs run below the government's range; the GC adds overhead and profit on top.
     const total = ((min + max) / 2) * (0.75 + this.rng.fork("total").next() * 0.15);
     this.requiredTrades = scope.map(([t]) => t);
@@ -112,7 +119,7 @@ export class BidWorld {
     const cached = this.quotes.get(trade);
     if (cached) return cached.map((q) => ({ ...q }));
     const r = this.rng.fork(`quotes:${trade}`);
-    const base = this.trueCost.get(trade) ?? round100((this.opportunity.estimatedValueUsd?.min ?? 50_000) * 0.05);
+    const base = this.trueCost.get(trade) ?? round100(this.valueUsd.min * 0.05);
     const names = r.sample(SUB_NAMES, 3);
     const count = r.int(2, 3);
     const list: Quote[] = Array.from({ length: count }, (_, i) => ({

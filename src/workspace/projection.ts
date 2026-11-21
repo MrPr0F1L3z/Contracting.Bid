@@ -164,7 +164,7 @@ export function projectJob(runId: string, events: readonly LoggedEvent[], opport
       case "opportunity_found":
         job.noticeId = str(p.noticeId);
         job.title = str(p.title);
-        job.agency = opportunities.find((o) => o.noticeId === job.noticeId)?.agency ?? null;
+        job.agency = str(p.agency) ?? opportunities.find((o) => o.noticeId === job.noticeId)?.agency ?? null;
         break;
       case "opportunity_decided":
         if (p.decision !== "pursue" || p.ownerApproved === false) job.status = "passed";

@@ -8,7 +8,7 @@ The full POC spec lives in the project's Claude Doc, "Contracting.Bid POC: Proce
 - TypeScript on Node.js 22, tested with Vitest.
 - Claude (`claude-opus-5-5`) runs the President and Project Manager. One local model on vLLM runs every other role and the simulated counterparties. With 24GB of VRAM, only one local model fits at a time.
 - Everything runs on the owner's machine with Docker Compose. CI and cloud sessions only use stub models and saved fixtures.
-- The company is a general contractor that subcontracts all work. For the POC, jobs come from a stub of made-up federal construction solicitations. A read-only SAM.gov source will plug into the same `OpportunitySource` interface in a later sprint.
+- The company is a general contractor that subcontracts all work. Jobs come from a stub of made-up federal construction solicitations by default, or from real SAM.gov listings (read-only) through the same `OpportunitySource` interface.
 
 ## Layout
 
@@ -23,7 +23,7 @@ The full POC spec lives in the project's Claude Doc, "Contracting.Bid POC: Proce
 | `src/deploy/` | The deploy pipeline behind `pnpm stack`: staging checks, the promotion gate, maintenance windows, the deploy ledger (see docs/STACKS.md) |
 | `src/budget/` | Per-call cost and budgets that warn at 80% and stop at 100% |
 | `src/approvals/` | The nine owner approval gates and the approval queue, with batch approvals that can be approved in full or item by item. `details.ts` builds each request's structured details (title, labelled facts, notes) so the dashboard can lay it out; the `summary` sentence stays for the terminal, event log and database |
-| `src/opportunities/` | The `OpportunitySource` interface, the stub source of made-up solicitations (two each at easy, moderate and complex), the seeded picker, and a coverage planner that spreads runs across complexity levels |
+| `src/opportunities/` | The `OpportunitySource` interface, the stub source of made-up solicitations (two each at easy, moderate and complex), the read-only SAM.gov source (`samgov.ts`), its listings cache (`cache.ts`, in the `listing_cache` table or a file), `JOB_SOURCE` selection (`source.ts`), the seeded picker, and a coverage planner that spreads runs across complexity levels |
 | `src/agents/` | Agent records and the hiring policy, the agent tool loop (budgets, event logging, Claude's thinking passed back unchanged), and the hiring tools |
 | `src/gpu/` | Pauses the owner's listed GPU processes before a run and always resumes them afterwards; checks vLLM lanes and speed and restarts it when needed |
 | `src/dashboard/` | The owner dashboard: the Blueprint workspace layout from `web/src/design` (colours copied and checked by a test), filled from run data, with approvals, the live event log, saved reports and starting runs as tabs of Settings. `views.ts` holds the browser-side helpers that shape workspace data into screens. It serves its own fonts from `/fonts/` |
@@ -56,6 +56,8 @@ Each agent task runs in `runAgentTask`: call the model, run the tools it asks fo
 7. The contracting officer awards on lowest price technically acceptable.
 
 `BidWorld` (`src/world/market.ts`) is the simulated outside world for one bid. Each stub job has a hidden list of required trades and cost shares (`JOB_SCOPES`); the true subcontract cost is 75–90% of the government estimate's midpoint. Each trade gets 2–3 quotes at 92–130% of its true cost, and 2–4 competitors bid 108–135% of the total true cost. Every draw uses its own forked RNG stream, so a seed replays the same world regardless of the order agents ask for things.
+
+A real SAM.gov listing has no `JOB_SCOPES` entry. `simulatedScope` (`src/world/scope.ts`) infers its trades and cost shares from the NAICS code and trade words in the title and description (`inferTrades`), takes its value from the notice's estimate or else draws one from the seed within its complexity's band (easy $50k–300k, moderate $250k–1.5M, complex $1M–10M), and draws its contract days the same way. The stub jobs keep their written-out scopes, so their runs replay as before.
 
 ## Execution (slice 3)
 
@@ -117,5 +119,4 @@ In Compose the dashboard listens on 0.0.0.0 inside its container (`DASHBOARD_IN_
 
 ## Next
 
-1. The real SAM.gov source in place of the stub.
-2. Scheduled runs from the service, and marking runs left unfinished by a restart.
+1. Scheduled runs from the service.
