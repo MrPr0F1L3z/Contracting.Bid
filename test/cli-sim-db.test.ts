@@ -246,6 +246,17 @@ describe("pnpm sim with a database (functional, embedded Postgres)", () => {
     expect((await db.query("SELECT source, requests FROM listing_cache")).rows).toEqual([{ source: "samgov", requests: 2 }]);
   }, 30_000);
 
+  it("on prod, serve reads SAM.gov whatever JOB_SOURCE says, and never offers the stub jobs", async () => {
+    const listing = { noticeId: "abc", title: "Paint stairwells", type: "Solicitation", naicsCode: "238320", active: "Yes" };
+    const samFetch = async () => ({ ok: true, status: 200, json: async () => ({ totalRecords: 1, opportunitiesData: [listing] }), text: async () => "" });
+    await main(["serve"], { ...deps(), env: { ...env, APP_STACK: "prod", SAM_GOV_API_KEY: "k" }, samFetch, untilStopped: async () => undefined });
+    expect(lines[0]).toBe("Read 1 samgov job(s) that can be bid.");
+    expect((await db.query("SELECT source FROM listing_cache")).rows).toEqual([{ source: "samgov" }]);
+    lines = [];
+    await main(["serve"], { ...deps(), env: { ...env, APP_STACK: "prod", JOB_SOURCE: "stub" }, untilStopped: async () => undefined });
+    expect(lines[0]).toBe('The prod stack only reads jobs from SAM.gov, never sim data, so its job source is always samgov, not "stub".. No SAM.gov listings were read; fix the setting and restart.');
+  }, 30_000);
+
   it("serve still starts when SAM.gov is not set up, offering no jobs", async () => {
     await main(["serve"], { ...deps(), env: { ...env, JOB_SOURCE: "samgov" }, untilStopped: async () => undefined });
     expect(lines[0]).toMatch(/^JOB_SOURCE=samgov needs SAM_GOV_API_KEY.*\. Start a run offers no jobs; fix the setting and restart\.$/);
@@ -312,6 +323,7 @@ describe("pnpm sim with a database (functional, embedded Postgres)", () => {
     });
     expect(code).toBe(0);
     expect(lines).toContain("The prod stack does not start sim runs. Press Ctrl+C to stop.");
+    expect(lines[0]).toMatch(/^JOB_SOURCE=samgov needs SAM_GOV_API_KEY.*No SAM\.gov listings were read; fix the setting and restart\.$/);
     expect(health).toEqual({ ok: true, stack: "prod", build: "abc123def456" });
     expect(me).toMatchObject({ username: "owner", stack: "prod" });
     expect(loginBody).toMatchObject({ username: "owner", stack: "prod" });

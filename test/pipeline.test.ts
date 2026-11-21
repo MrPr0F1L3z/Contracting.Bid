@@ -28,7 +28,7 @@ class FakeMachine {
   images = new Set<string>();
   running = new Map<number, { stack: string; build: string }>();
   /** Step names (matched against the command) to make fail. */
-  failing = new Set<"unit" | "build" | "up" | "health" | "closeout" | "guard" | "dump" | "upPrevious" | "migrate">();
+  failing = new Set<"unit" | "build" | "up" | "health" | "closeout" | "guard" | "dump" | "upPrevious" | "migrate" | "listings" | "jobGuard">();
   logins = 1;
   t = new Date(2026, 10, 22, 3, 0).getTime(); // Sunday 03:00, this machine's time
 
@@ -66,6 +66,9 @@ class FakeMachine {
       return ok("built");
     }
     if (args[0] === "run") {
+      if (args.includes("JOB_SOURCE=stub")) {
+        return this.failing.has("jobGuard") ? ok("8 made-up stub listing(s).") : { code: 2, stdout: 'The prod stack only reads jobs from SAM.gov, never sim data, so its job source is always samgov, not "stub".\n', stderr: "" };
+      }
       if (args.includes("APP_STACK=prod")) return this.failing.has("guard") ? ok("Starting a cloud closeout run") : { code: 3, stdout: 'The prod stack never runs simulations, so its database holds only real data. Run "closeout" on dev or staging.\n', stderr: "" };
       return this.failing.has("unit") ? { code: 1, stdout: " FAIL  test/x.test.ts > adds\nAssertionError: expected 2 to be 3\n", stderr: "" } : ok(" Tests  548 passed");
     }
@@ -90,6 +93,10 @@ class FakeMachine {
       return ok();
     }
     if (joined.includes("db.js status")) return ok("applied  001_init.sql\napplied  004_stack_identity.sql\n");
+    if (joined.includes("sim.js listings")) {
+      if (this.failing.has("listings")) return { code: 2, stdout: "JOB_SOURCE=samgov needs SAM_GOV_API_KEY\n", stderr: "" };
+      return ok("12 SAM.gov listing(s), read 2026-11-22T03:00:00.000Z with 2 request(s).\n");
+    }
     if (joined.includes("sim.js closeout")) {
       if (stack === "prod") return { code: 3, stdout: "The prod stack never runs simulations, so its database holds only real data.\n", stderr: "" };
       return this.failing.has("closeout") ? { code: 1, stdout: "Run closeout-x: FAILED in 1s", stderr: "" } : ok("Run closeout-cloud-x (cloud, seed 1): CLOSED in 0.4s.\n");
@@ -157,6 +164,10 @@ describe("deploy pipeline (dev -> staging -> prod)", () => {
     await rm(root, { recursive: true, force: true });
   });
 
+  it("sends staging and prod to SAM.gov for their jobs", async () => {
+    for (const s of ["staging", "prod"]) expect(await readFile(join(REPO, "deploy", "stacks", `${s}.env`), "utf8")).toMatch(/^JOB_SOURCE=samgov$/m);
+  });
+
   it("reads each stack's settings from the committed files", async () => {
     expect(await stackSettings(REPO, "staging")).toEqual({ stack: "staging", project: "contracting-staging", dbPort: 5433, dashboardPort: 4200, dbUser: "contracting", dbPassword: "contracting", dbName: "contracting" });
     expect(await stackSettings(REPO, "prod")).toMatchObject({ project: "contracting-prod", dbPort: 5434, dashboardPort: 4300 });
@@ -203,7 +214,8 @@ describe("deploy pipeline (dev -> staging -> prod)", () => {
     expect(lines.filter((l) => /^ {2}(PASS|FAIL) /.test(l))).toEqual([
       "  PASS  export commit", "  PASS  read stack settings", "  PASS  build image", "  PASS  unit tests in the image",
       "  PASS  start staging database", "  PASS  apply migrations", "  PASS  dashboard login exists", "  PASS  start staging on 0123456789ab",
-      "  PASS  health check", "  PASS  migrations applied", "  PASS  stub closeout run on staging", "  PASS  prod refuses sim runs",
+      "  PASS  health check", "  PASS  migrations applied", "  PASS  stub closeout run on staging", "  PASS  staging reads its job listings",
+      "  PASS  prod refuses sim runs", "  PASS  prod refuses stub jobs",
     ]);
     expect(lines.at(-1)).toMatch(/^PASS: 0123456789ab is on staging/);
     const ledger = await pipeline().ledger.all();
@@ -239,6 +251,14 @@ describe("deploy pipeline (dev -> staging -> prod)", () => {
     m.failing.add("guard");
     expect(await pipeline().testStaging()).toBe(1);
     expect((await pipeline().ledger.latest("staging"))!.steps.at(-1)).toMatchObject({ name: "prod refuses sim runs", ok: false });
+    m.failing.clear();
+    m.failing.add("listings");
+    expect(await pipeline().testStaging()).toBe(1);
+    expect((await pipeline().ledger.latest("staging"))!.steps.at(-1)).toMatchObject({ name: "staging reads its job listings", ok: false, detail: expect.stringContaining("SAM_GOV_API_KEY") });
+    m.failing.clear();
+    m.failing.add("jobGuard");
+    expect(await pipeline().testStaging()).toBe(1);
+    expect((await pipeline().ledger.latest("staging"))!.steps.at(-1)).toMatchObject({ name: "prod refuses stub jobs", ok: false });
   });
 
   it("re-checks staging only once something is deployed", async () => {

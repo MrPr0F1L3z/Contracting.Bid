@@ -70,6 +70,14 @@ describe("pnpm sim with SAM.gov listings (functional)", () => {
     expect(lines[2]).toMatch(/^ {2}STUB-E01 {2}easy {6}due 2026-12-01 {2}Repave/);
   });
 
+  it("on prod, lists only SAM.gov jobs and refuses the stub", async () => {
+    expect(await main(["listings"], { out, env: { APP_STACK: "prod", SAM_GOV_API_KEY: "k", SAMGOV_CACHE_FILE: join(dir, "c.json") }, db: null, samFetch: sam(), now })).toBe(0);
+    expect(lines[0]).toMatch(/^1 SAM\.gov listing\(s\)/);
+    lines = [];
+    expect(await main(["listings", "--source", "stub"], { out, env: { APP_STACK: "prod" }, db: null })).toBe(2);
+    expect(lines[0]).toMatch(/^The prod stack only reads jobs from SAM\.gov/);
+  });
+
   it("lists SAM.gov jobs, reading SAM.gov once and then the cache", async () => {
     const f = sam();
     expect(await main(["listings"], { out, env: env(), db: null, samFetch: f, now })).toBe(0);

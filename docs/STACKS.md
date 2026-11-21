@@ -2,11 +2,11 @@
 
 Contracting.Bid runs as three stacks on this machine. Each has its own database and its own dashboard.
 
-| Stack | What it runs | Data | Dashboard | Database |
-|---|---|---|---|---|
-| dev | this checkout, as you change it | sim runs | 127.0.0.1:4100 | 127.0.0.1:5432 (the one you have today) |
-| staging | one committed build under test | sim runs | 127.0.0.1:4200 | 127.0.0.1:5433 |
-| prod | a build that passed staging | real use only, never sim data | 127.0.0.1:4300 (and your domain, see below) | 127.0.0.1:5434 |
+| Stack | What it runs | Data | Jobs from | Dashboard | Database |
+|---|---|---|---|---|---|
+| dev | this checkout, as you change it | sim runs | `JOB_SOURCE` in `.env` (stub by default) | 127.0.0.1:4100 | 127.0.0.1:5432 (the one you have today) |
+| staging | one committed build under test | sim runs | SAM.gov (`deploy/stacks/staging.env`) | 127.0.0.1:4200 | 127.0.0.1:5433 |
+| prod | a build that passed staging | real use only, never sim data | SAM.gov, always | 127.0.0.1:4300 (and your domain, see below) | 127.0.0.1:5434 |
 
 ## The flow
 
@@ -32,7 +32,17 @@ change things on dev ──► commit ──► pnpm stack deploy staging
 3. **The gate.** Run real closeout runs on staging: on its dashboard (127.0.0.1:4200), **Start a run**, closeout, with **Approve every gate automatically** ticked. `pnpm stack status` shows how many count. A run counts when it is a full `closeout` run that ended **closed**, used real models (not `--stub`), and had **no owner decisions** (every approval automatic). Prod needs 10 (`PROMOTE_MIN_RUNS`).
 4. **Prod.** `pnpm stack promote` puts the newest build that passed staging on prod. It refuses unless the gate is met and the time is inside `PROD_MAINTENANCE_WINDOW`, then asks you to confirm. It saves the prod database to a file first, restarts prod on the new build, and checks it. If a check fails it goes back to the previous build and writes a report, the same as staging.
 
-Prod never runs simulations: every sim command refuses there, its dashboard has no **Start a run** tab, and `pnpm db import` is turned off. Each database also records which stack it belongs to the first time it is used, and refuses any other, so prod can never be pointed at staging's data by mistake.
+Prod never runs simulations: every sim command refuses there, its dashboard has no **Start a run** tab, and `pnpm db import` is turned off. Its jobs only ever come from SAM.gov: it refuses `JOB_SOURCE=stub`, never shows the stub's made-up jobs, and reads SAM.gov listings into its own database when it starts. A prod deploy checks it can read them.
+
+## Where staging's jobs come from
+
+Staging's runs bid real SAM.gov listings (read-only; the bid, subs, award and money are still simulated). The setting is one line in `deploy/stacks/staging.env`:
+
+```
+JOB_SOURCE=samgov    # or stub, for the made-up jobs
+```
+
+To switch, change that line, commit, and run `pnpm stack deploy staging`. Staging and prod need `SAM_GOV_API_KEY` in this checkout's `.env` (see the README, Real jobs from SAM.gov). A staging deploy checks that staging can read its listings, and that the build refuses stub jobs when it runs as prod. The deploy's own scripted closeout check still bids the stub job, since the scripted models only know that one. Each database also records which stack it belongs to the first time it is used, and refuses any other, so prod can never be pointed at staging's data by mistake.
 
 ## First time
 
