@@ -174,3 +174,37 @@ describe("projectJobs and workspaceStats", () => {
     expect(workspaceStats([])).toEqual({ quotesRequested: 0, quotesReceived: 0, quotesOutstanding: 0, bidsAwaiting: 0, bidsAwaitingUsd: 0, awardedJobs: 0, urgent: 0 });
   });
 });
+
+describe("projectJob team, decisions and run facts", () => {
+  it("records the seed and the injected problems", () => {
+    const j = projectJob("r1", [ev("run_started", { seed: 42, problems: ["change-order", 7, "late-delivery"] })]);
+    expect(j.seed).toBe(42);
+    expect(j.injected).toEqual(["change-order", "late-delivery"]);
+    expect(projectJob("r1", [ev("run_started", { seed: "x" })])).toMatchObject({ seed: null, injected: [] });
+  });
+
+  it("lists each hired agent once, in hiring order, with who hired it", () => {
+    const j = projectJob("r1", [
+      ev("agent_hired", { agentId: 1, role: "president", managerId: null }, "r1", "owner"),
+      ev("agent_hired", { approvalId: 1, agentId: 2, role: "hr", managerId: 1, budgetUsd: 2 }, "r1", "president#1"),
+      ev("agent_hired", { agentId: 2, role: "hr" }, "r1", "president#1"),
+    ]);
+    expect(j.team).toEqual([
+      { agentId: 1, role: "president", managerId: null, budgetUsd: null, hiredBy: "owner" },
+      { agentId: 2, role: "hr", managerId: 1, budgetUsd: 2, hiredBy: "president#1" },
+    ]);
+  });
+
+  it("keeps answered approvals as decisions", () => {
+    const j = projectJob("r1", [
+      ev("approval_requested", { approvalId: 6, gate: "submit_bid", summary: "Bid" }, "r1", "president#1"),
+      ev("approval_decided", { approvalId: 6, gate: "submit_bid", status: "approved", reason: "ok" }, "r1", "owner"),
+      ev("approval_decided", { approvalId: 7, gate: "sign_contract" }, "r1", "owner"),
+    ]);
+    expect(j.tasks).toEqual([]);
+    expect(j.decisions).toEqual([
+      { approvalId: 6, gate: "submit_bid", status: "approved", reason: "ok" },
+      { approvalId: 7, gate: "sign_contract", status: "decided", reason: null },
+    ]);
+  });
+});

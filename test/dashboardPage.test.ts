@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { GATES } from "../src/approvals/approvals.js";
 import { DASHBOARD_FONTS, clearFontCache, fontFile } from "../src/dashboard/fonts.js";
 import { DASHBOARD_COLORS, DASHBOARD_HTML, eventDetail, formatMoney, gateLabel, outcomeTone, splitSummary } from "../src/dashboard/page.js";
+import * as views from "../src/dashboard/views.js";
 
 describe("gateLabel", () => {
   it("has plain words for every gate", () => {
@@ -96,6 +97,7 @@ describe("the page", () => {
 
   it("inlines the tested helpers rather than a second copy", () => {
     for (const fn of [gateLabel, splitSummary, formatMoney, eventDetail, outcomeTone]) expect(DASHBOARD_HTML).toContain(fn.toString());
+    for (const fn of Object.values(views)) if (typeof fn === "function") expect(DASHBOARD_HTML).toContain(fn.toString());
   });
 
   it("loads only its own fonts, and one @font-face per served file", () => {
@@ -104,10 +106,24 @@ describe("the page", () => {
     expect(DASHBOARD_HTML).not.toMatch(/https?:\/\//);
   });
 
-  it("has the Blueprint shell: wordmark, side navigation and a heading per tab", () => {
+  it("has the Blueprint workspace shell: wordmark, a screen per sidebar link, and Settings at the foot", () => {
     expect(DASHBOARD_HTML).toContain('<div class="wordmark">Contracting<b>.Bid</b></div>');
-    for (const tab of ["approvals", "live", "runs", "start"]) expect(DASHBOARD_HTML).toContain(`data-tab="${tab}"`);
-    for (const h of ["Approvals", "Live log", "Past runs", "Start a run"]) expect(DASHBOARD_HTML).toContain(`<h1>${h}</h1>`);
+    for (const n of views.WORKSPACE_NAV) {
+      expect(DASHBOARD_HTML).toContain(`<a href="#${n.view}" data-view="${n.view}">`);
+      expect(DASHBOARD_HTML).toContain(`<section id="v-${n.view}" data-screen="${n.view}" hidden>`);
+    }
+    expect(DASHBOARD_HTML).toContain("<h1>Subs &amp; vendors</h1>");
+    expect(DASHBOARD_HTML).toMatch(/<a id="settingsLink" class="foot-link" href="#settings\/approvals" data-view="settings"/);
+  });
+
+  it("puts approvals, the live log, past runs and starting a run on Settings as tabs", () => {
+    const settings = /<section id="v-settings"[\s\S]*?<\/section>/.exec(DASHBOARD_HTML)![0];
+    expect(settings).toContain("<h1>Settings</h1>");
+    for (const t of views.SETTINGS_TABS) {
+      expect(settings).toContain(`href="#settings/${t.tab}" data-tab="${t.tab}"`);
+      expect(settings).toContain(`<div id="${t.tab}" hidden>`);
+      expect(settings).toContain(`>${t.label}`);
+    }
   });
 
   it("never builds HTML from run data", () => {

@@ -31,6 +31,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
+      # test/dashboardBrowser.test.ts drives the owner dashboard in Chromium.
+      - run: pnpm exec playwright-core install --with-deps chromium
       # Tests use stub models and saved fixtures only. CI never calls Claude, vLLM or SAM.gov.
       - run: pnpm test
         env:

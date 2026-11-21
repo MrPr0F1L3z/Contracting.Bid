@@ -24,7 +24,7 @@ The full POC spec lives in the project's Claude Doc, "Contracting.Bid POC: Proce
 | `src/opportunities/` | The `OpportunitySource` interface, the stub source of made-up solicitations (two each at easy, moderate and complex), the seeded picker, and a coverage planner that spreads runs across complexity levels |
 | `src/agents/` | Agent records and the hiring policy, the agent tool loop (budgets, event logging, Claude's thinking passed back unchanged), and the hiring tools |
 | `src/gpu/` | Pauses the owner's listed GPU processes before a run and always resumes them afterwards; checks vLLM lanes and speed and restarts it when needed |
-| `src/dashboard/` | The owner dashboard: a local web page for approvals, the live event log and saved reports. It uses the Blueprint design from `web/src/design` (colours copied and checked by a test) and serves its own fonts from `/fonts/` |
+| `src/dashboard/` | The owner dashboard: the Blueprint workspace layout from `web/src/design` (colours copied and checked by a test), filled from run data, with approvals, the live event log, saved reports and starting runs as tabs of Settings. `views.ts` holds the browser-side helpers that shape workspace data into screens. It serves its own fonts from `/fonts/` |
 | `src/workspace/` | Turns a run's event log into what the customer workspace shows: one job per run with its stage, quotes, bid, contract, money and the approvals waiting on the owner |
 | `src/cli/` | `pnpm gpu` (vLLM check, ensure, load test), `pnpm sim` (hiring, bench, bid, job, closeout, dashboard, user) and `pnpm db` (migrate, status, import) |
 | `db/migrations/` | Postgres schema for the data model, applied in order when a run starts (or by `pnpm db migrate`) |
@@ -94,7 +94,7 @@ Each stage function (`bidStage`, `jobStage`) returns where it stopped, so each s
 
 `projectJob` (`src/workspace/projection.ts`) reads one run's events in order and returns a `WorkspaceJob`: its lifecycle stage (the web workspace's nine, Find to Closeout), quotes and the ones selected, bid, contract, change orders, schedule, problems, money in and out, and the approvals the owner has not answered, each under the stage its gate belongs to (`GATE_STAGE`). The event log is the only input, so the same function serves a run in progress, a finished run and a replay, and it never sees the simulated world's hidden costs. A stage only moves forward.
 
-The dashboard keeps each run's job events (everything but model and tool chatter) for the latest `WORKSPACE_LIVE_RUNS` runs. `GET /api/workspace` (signed-in only) returns those jobs plus the latest saved runs, with the job stats counts. The web workspace does not read it yet.
+The dashboard keeps each run's job events (everything but model and tool chatter) for the latest `WORKSPACE_LIVE_RUNS` runs. `GET /api/workspace` (signed-in only) returns those jobs plus the latest saved runs, with the job stats counts. Each job carries its stage, quotes, bid, contract, schedule, problems, money, pending tasks, the hired team, answered decisions, the seed and the injected problems. The dashboard page reads it to fill the workspace screens and refreshes it shortly after job events stream in. The web workspace does not read it yet.
 
 ## Database
 

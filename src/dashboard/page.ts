@@ -1,11 +1,16 @@
 /**
  * The dashboard page: one self-contained HTML file with inline CSS and JS,
- * in the Blueprint design the customer site uses (web/src/design). The colour
- * values are copied from that design's tokens; a test fails if they drift.
+ * laid out as the Blueprint workspace of the customer site (web/src/design):
+ * the same sidebar screens, filled from the runs' data (/api/workspace), with
+ * the owner's tools (approvals, live log, past runs, starting a run) as tabs
+ * of Settings. The colour values are copied from that design's tokens; a test
+ * fails if they drift.
  *
  * Every value from a report or event is set with textContent, never as
  * HTML, because agents write much of that text.
  */
+
+import { SETTINGS_TABS, WORKSPACE_NAV, jobName, jobStatus, jobsForView, moneyTotals, parseRoute, problemLabel, roleLabel, routeHash, scheduleBars, stageLabel, subsFromJobs } from "./views.js";
 
 /* ── Helpers the page runs in the browser. They are written here as ordinary
       functions so they can be unit-tested, then inlined into the page with
@@ -138,9 +143,7 @@ export const DASHBOARD_HTML = `<!doctype html>
   .wordmark b { color:var(--accent); font-weight:800; }
   .side-label { font:600 12px/16px var(--font-sans); letter-spacing:0.06em; text-transform:uppercase; padding:4px 12px 0; }
   nav { display:flex; flex-direction:column; gap:4px; }
-  nav button { display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%; background:none; border:0; padding:8px 12px; color:inherit; font:500 14px/24px var(--font-sans); text-align:left; cursor:pointer; border-radius:var(--r); }
-  nav button:hover { background:var(--shell-raised); color:var(--on-shell); }
-  nav button.on { background:var(--shell-raised); color:var(--on-shell); box-shadow:inset 3px 0 0 var(--accent); }
+  .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
   .badge { min-width:22px; padding:0 6px; border-radius:999px; background:var(--accent); color:var(--on-accent); font:600 12px/20px var(--font-mono); text-align:center; }
   .side-foot { margin-top:auto; border-top:1px solid var(--shell-raised); padding:16px 12px 0; display:grid; gap:8px; font-size:13px; line-height:20px; }
   .side-foot #who { color:var(--on-shell); font-weight:600; }
@@ -155,7 +158,7 @@ export const DASHBOARD_HTML = `<!doctype html>
   .pagehead { display:flex; flex-wrap:wrap; align-items:center; gap:12px; }
   h1 { font:700 28px/34px var(--font-display); letter-spacing:-0.01em; }
   .stack { display:grid; gap:16px; }
-  .card { background:var(--surface); border:1px solid var(--line); border-radius:var(--r); box-shadow:var(--shadow-card); padding:24px; min-width:0; display:grid; gap:16px; }
+  .card { background:var(--surface); border:1px solid var(--line); border-radius:var(--r); box-shadow:var(--shadow-card); padding:24px; min-width:0; display:grid; gap:16px; align-content:start; }
   .card-h { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; }
   h2 { font:600 20px/28px var(--font-display); }
   h3 { font:600 17px/24px var(--font-display); }
@@ -168,12 +171,13 @@ export const DASHBOARD_HTML = `<!doctype html>
 
   .btn { font:600 14px/20px var(--font-sans); height:40px; padding:0 16px; border-radius:var(--r); border:1px solid var(--line-strong); background:var(--surface); color:var(--ink); cursor:pointer; white-space:nowrap; }
   .btn:hover { border-color:var(--ink); }
+  a.btn { display:inline-flex; align-items:center; text-decoration:none; }
   .btn.primary { background:var(--brand); border-color:var(--brand); color:var(--on-brand); }
   .btn.primary:hover { filter:brightness(0.94); }
   .btn.ghost { border-color:transparent; background:none; color:var(--brand-ink); padding-left:0; }
   .btn.reject { color:var(--danger); border-color:var(--danger); }
   .btn:disabled { opacity:0.5; cursor:not-allowed; }
-  .btn:focus-visible, input:focus-visible, select:focus-visible, nav button:focus-visible, .clickable:focus-visible, summary:focus-visible { outline:2px solid var(--brand); outline-offset:2px; }
+  .btn:focus-visible, input:focus-visible, select:focus-visible, .clickable:focus-visible, summary:focus-visible { outline:2px solid var(--brand); outline-offset:2px; }
   .side :focus-visible { outline-color:var(--on-shell); }
   select, input[type=text], input[type=password] { font:inherit; height:40px; padding:0 12px; border:1px solid var(--line-strong); border-radius:var(--r); background:var(--surface); color:var(--ink); max-width:100%; }
   input[type=text], input[type=password] { flex:1; min-width:180px; }
@@ -212,6 +216,7 @@ export const DASHBOARD_HTML = `<!doctype html>
   th, td { text-align:left; padding:12px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
   th { font:600 12px/16px var(--font-sans); letter-spacing:0.06em; text-transform:uppercase; color:var(--ink-muted); border-bottom-color:var(--line-strong); }
   td.num, th.num { text-align:right; white-space:nowrap; }
+  th.num { font:600 12px/16px var(--font-sans); }
   td.strong { font-weight:600; }
   tr:last-child td { border-bottom:0; }
   .clickable { cursor:pointer; }
@@ -245,17 +250,46 @@ export const DASHBOARD_HTML = `<!doctype html>
   form.login input { width:100%; height:44px; }
   form.login .btn { height:48px; }
 
+  .side nav a, .side .foot-link { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 12px; color:inherit; font:500 14px/24px var(--font-sans); text-decoration:none; border-radius:var(--r); }
+  .side nav a:hover, .side .foot-link:hover { background:var(--shell-raised); color:var(--on-shell); }
+  .side nav a[aria-current] { background:var(--shell-raised); color:var(--on-shell); box-shadow:inset 3px 0 0 var(--accent); }
+  .side .foot-link[aria-current] { color:var(--on-shell); font-weight:600; }
+  .side a:focus-visible { outline:2px solid var(--on-shell); outline-offset:2px; }
+  .tabs { display:flex; gap:4px; border-bottom:1px solid var(--line-strong); overflow-x:auto; }
+  .tabs a { display:inline-flex; align-items:center; gap:8px; padding:8px 16px; color:var(--ink-muted); font:600 14px/24px var(--font-sans); text-decoration:none; white-space:nowrap; border-bottom:3px solid transparent; margin-bottom:-1px; }
+  .tabs a:hover { color:var(--ink); }
+  .tabs a[aria-current] { color:var(--ink); border-bottom-color:var(--brand); }
+  .tabs a:focus-visible, a.link:focus-visible { outline:2px solid var(--brand); outline-offset:2px; }
+  a.link { color:var(--brand-ink); font-weight:600; text-decoration:none; }
+  a.link:hover { text-decoration:underline; }
+  .stepper { display:grid; grid-template-columns:repeat(9, minmax(0, 1fr)); gap:4px; }
+  .stepper span { font:600 11px/16px var(--font-sans); letter-spacing:0.04em; text-transform:uppercase; padding:8px 4px 0; border-top:4px solid var(--line); color:var(--ink-muted); text-align:center; overflow-wrap:anywhere; }
+  .stepper span.done { border-top-color:var(--brand); color:var(--ink); }
+  .stepper span.now { border-top-color:var(--accent); color:var(--ink); }
+  .grid2 { display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:24px; }
+  .track { position:relative; height:28px; background:var(--surface-sunk); border-radius:var(--r); }
+  .track i { position:absolute; top:4px; bottom:4px; background:var(--brand); border-radius:4px; min-width:4px; }
+  .gantt { display:grid; grid-template-columns:minmax(90px, 160px) minmax(0, 1fr) auto; gap:8px 12px; align-items:center; }
+  .kpi.urgent { border-color:var(--accent); box-shadow:inset 4px 0 0 var(--accent), var(--shadow-card); }
+  .task { display:flex; flex-wrap:wrap; gap:8px 12px; align-items:center; padding:12px 0; border-bottom:1px solid var(--line); }
+  .task:last-child { border-bottom:0; }
+
   @media (max-width:820px) {
     .shell { grid-template-columns:minmax(0, 1fr); }
     .side { position:static; height:auto; padding:16px; gap:12px; }
     nav { flex-direction:row; overflow-x:auto; }
-    nav button { width:auto; white-space:nowrap; }
     .side-foot { margin-top:0; grid-auto-flow:column; justify-content:start; align-items:center; gap:16px; padding:12px 12px 0; }
     main { padding:16px; }
     .card { padding:16px; }
     .ev { grid-template-columns:44px minmax(0, 1fr); }
     .ev .actor, .ev .kv { grid-column:2; }
     .approval-top .amount { margin-left:0; width:100%; }
+    nav a, .side .foot-link { white-space:nowrap; }
+    .kpis { grid-template-columns:repeat(2, minmax(0, 1fr)); gap:8px; }
+    .task .grow { flex-basis:100%; order:-1; }
+    .stepper { grid-template-columns:repeat(3, minmax(0, 1fr)); }
+    .gantt { grid-template-columns:minmax(0, 1fr) auto; }
+    .gantt .track { grid-column:1 / -1; }
   }
 </style>
 </head>
@@ -264,15 +298,13 @@ export const DASHBOARD_HTML = `<!doctype html>
   <aside class="side">
     <div>
       <div class="wordmark">Contracting<b>.Bid</b></div>
-      <div class="side-label">Owner dashboard</div>
+      <div class="side-label">Workspace</div>
     </div>
-    <nav id="nav" aria-label="Dashboard" hidden>
-      <button data-tab="approvals" class="on"><span>Approvals</span><span id="count" class="badge" hidden>0</span></button>
-      <button data-tab="live"><span>Live log</span></button>
-      <button data-tab="runs"><span>Past runs</span></button>
-      <button data-tab="start" id="startTab" hidden><span>Start a run</span></button>
+    <nav id="nav" aria-label="Workspace" hidden>
+${WORKSPACE_NAV.map((n) => `      <a href="#${n.view}" data-view="${n.view}">${n.label.replace("&", "&amp;")}</a>`).join("\n")}
     </nav>
     <div class="side-foot">
+      <a id="settingsLink" class="foot-link" href="#settings/approvals" data-view="settings" hidden><span>Settings</span><span id="count" class="badge" hidden>0</span></a>
       <span id="conn" class="conn"></span>
       <span id="who"></span>
       <button id="logout" hidden>Sign out</button>
@@ -280,21 +312,31 @@ export const DASHBOARD_HTML = `<!doctype html>
   </aside>
   <main>
     <section id="login" hidden></section>
-    <section id="approvals" hidden>
-      <div class="pagehead"><h1>Approvals</h1></div>
-      <div id="approvalsBody" class="stack"></div>
+${WORKSPACE_NAV.map((n) => `    <section id="v-${n.view}" data-screen="${n.view}" hidden>
+      <div class="pagehead"><h1>${n.label.replace("&", "&amp;")}</h1><span class="pill">From your runs</span></div>
+      <div class="stack body"></div>
+    </section>`).join("\n")}
+    <section id="v-job" data-screen="job" hidden>
+      <div class="stack body"></div>
     </section>
-    <section id="live" hidden>
-      <div class="pagehead"><h1>Live log</h1></div>
-      <div class="card"><div id="log" class="events"></div><div id="logEmpty" class="empty"><h3>Nothing yet</h3><p>Events from a running simulation appear here as they happen.</p></div></div>
-    </section>
-    <section id="runs" hidden>
-      <div class="pagehead"><h1>Past runs</h1></div>
-      <div id="runsBody" class="stack"></div>
-    </section>
-    <section id="start" hidden>
-      <div class="pagehead"><h1>Start a run</h1></div>
-      <div id="startBody" class="stack"></div>
+    <section id="v-settings" data-screen="settings" hidden>
+      <div class="pagehead"><h1>Settings</h1></div>
+      <div class="tabs" role="tablist" aria-label="Settings">
+${SETTINGS_TABS.map((t) => `        <a href="#settings/${t.tab}" data-tab="${t.tab}"${t.tab === "start" ? ' id="startTab" hidden' : ""}>${t.label}${t.tab === "approvals" ? ' <span id="tabCount" class="badge" hidden>0</span>' : ""}</a>`).join("\n")}
+      </div>
+      <div id="approvals" hidden>
+        <h2 class="sr">Approvals</h2>
+        <div id="approvalsBody" class="stack"></div>
+      </div>
+      <div id="live" hidden>
+        <div class="card"><div class="card-h"><h2>Live log</h2></div><div id="log" class="events"></div><div id="logEmpty" class="empty"><h3>Nothing yet</h3><p>Events from a running simulation appear here as they happen.</p></div></div>
+      </div>
+      <div id="runs" hidden>
+        <div id="runsBody" class="stack"></div>
+      </div>
+      <div id="start" hidden>
+        <div id="startBody" class="stack"></div>
+      </div>
     </section>
   </main>
 </div>
@@ -305,6 +347,18 @@ export const DASHBOARD_HTML = `<!doctype html>
   ${formatMoney.toString()}
   ${eventDetail.toString()}
   ${outcomeTone.toString()}
+  ${parseRoute.toString()}
+  ${routeHash.toString()}
+  ${stageLabel.toString()}
+  ${jobStatus.toString()}
+  ${jobName.toString()}
+  ${roleLabel.toString()}
+  ${jobsForView.toString()}
+  ${moneyTotals.toString()}
+  ${subsFromJobs.toString()}
+  ${scheduleBars.toString()}
+  ${problemLabel.toString()}
+  const STAGES = ["find", "research", "bid", "award", "subs", "schedule", "bill", "pay", "closeout"];
 
   let csrf = "";
   const $ = (id) => document.getElementById(id);
@@ -331,19 +385,180 @@ export const DASHBOARD_HTML = `<!doctype html>
   const TABS = ["approvals", "live", "runs", "start"];
   let launch = null;
   let launchNote = "";
+  let work = { jobs: [], stats: null };
+  let route = parseRoute(location.hash);
+  let signed = false;
 
-  document.querySelectorAll("nav button").forEach((b) => b.addEventListener("click", () => {
-    document.querySelectorAll("nav button").forEach((x) => { x.classList.toggle("on", x === b); if (x === b) x.setAttribute("aria-current", "page"); else x.removeAttribute("aria-current"); });
-    for (const id of TABS) $(id).hidden = id !== b.dataset.tab;
-    if (b.dataset.tab === "runs") showRuns();
-    if (b.dataset.tab === "start") renderStart();
-  }));
+  // ── Routing: the hash names the screen, so the back button and links work. ──
+  function show() {
+    route = parseRoute(location.hash);
+    if (!signed) return;
+    const navView = route.view === "job" ? "projects" : route.view;
+    document.querySelectorAll(".side a[data-view]").forEach((a) => { if (a.dataset.view === navView) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
+    document.querySelectorAll("main > section[data-screen]").forEach((sec) => { sec.hidden = sec.dataset.screen !== route.view; });
+    if (route.view === "settings") {
+      const tab = route.tab === "start" && !launch ? "approvals" : route.tab;
+      document.querySelectorAll(".tabs a").forEach((a) => { if (a.dataset.tab === tab) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
+      for (const id of TABS) $(id).hidden = id !== tab;
+      if (tab === "runs") showRuns();
+      if (tab === "start") renderStart();
+    } else renderWork();
+  }
+  window.addEventListener("hashchange", show);
+
+  // ── The workspace screens, filled from /api/workspace. ──
+  let workTimer = null;
+  async function loadWork() {
+    try { work = await api("/api/workspace"); } catch (e) { work = { jobs: [], stats: null, error: e.message }; }
+    if (signed && route.view !== "settings") renderWork();
+  }
+  // Job events arrive in bursts; refresh once they settle.
+  const refreshWork = () => { clearTimeout(workTimer); workTimer = setTimeout(loadWork, 600); };
+
+  const statusPill = (j) => { const s = jobStatus(j); return el("span", { class: "pill " + s.tone, text: s.text }); };
+  const jobLink = (j) => el("a", { class: "link", href: routeHash({ view: "job", runId: j.runId }), text: jobName(j) });
+  const kpi = (label, value, cls) => el("div", { class: "kpi" + (cls ? " " + cls : "") }, el("span", { class: "label", text: label }), el("b", { text: String(value) }));
+  const card = (title, ...kids) => el("div", { class: "card" }, title ? el("div", { class: "card-h" }, el("h2", { text: title })) : null, ...kids);
+  function table(cols, rows) {
+    const t = el("table", {}, el("tr", {}, ...cols.map((c) => el("th", { class: c.num ? "num" : "", text: c.label }))));
+    for (const r of rows) t.append(el("tr", {}, ...cols.map((c) => { const v = c.value(r); return el("td", { class: c.num ? "num" : "" }, v == null ? "" : typeof v === "object" ? v : String(v)); })));
+    return el("div", { class: "table-wrap" }, t);
+  }
+  const noJobs = (what) => empty("Nothing here yet", what + " Start a run under Settings and it fills in as the agents work.");
+  const stepper = (stage) => { const i = STAGES.indexOf(stage); return el("div", { class: "stepper", "aria-label": "Stage: " + stageLabel(stage) }, ...STAGES.map((s, k) => el("span", { class: k < i ? "done" : k === i ? "now" : "", text: stageLabel(s) }))); };
+
+  const SCREENS = {
+    overview(jobs) {
+      const s = work.stats || {};
+      const active = jobs.filter((j) => j.status === "active" && !j.finished);
+      const t = moneyTotals(jobs);
+      const out = [el("div", { class: "kpis" },
+        kpi("Needs you", pending.length, pending.length ? "urgent" : ""), kpi("Jobs in progress", active.length),
+        kpi("Bids awaiting award", (s.bidsAwaiting || 0) + (s.bidsAwaitingUsd ? " · " + money(s.bidsAwaitingUsd) : "")),
+        kpi("Awarded jobs", s.awardedJobs || 0), kpi("Profit", money(t.profitUsd)))];
+      const tasks = card("Needs you");
+      if (!pending.length) tasks.append(el("p", { class: "muted", text: "Nothing is waiting for you. When an agent needs a decision, it shows here." }));
+      for (const r of pending) tasks.append(el("div", { class: "task" }, el("span", { class: "pill info", text: gateLabel(r.gate) }), el("span", { class: "grow", text: splitSummary(r.summary).lead || gateLabel(r.gate) }),
+        r.amountUsd !== undefined ? el("span", { class: "num", text: money(r.amountUsd) }) : null, el("a", { class: "btn primary", href: "#settings/approvals", text: "Review" })));
+      out.push(tasks);
+      if (!jobs.length) { out.push(noJobs("Your jobs appear here.")); return out; }
+      out.push(card("Your jobs", table([
+        { label: "Job", value: jobLink }, { label: "Agency", value: (j) => j.agency || "" }, { label: "Stage", value: (j) => stageLabel(j.stage) },
+        { label: "Status", value: statusPill }, { label: "Contract", num: true, value: (j) => money(j.contractUsd) }, { label: "Profit", num: true, value: (j) => money(j.profitUsd) },
+      ], jobs)));
+      return out;
+    },
+    find_work(jobs) {
+      if (!jobs.length) return [noJobs("Projects the President looked at appear here.")];
+      return [card("Projects looked at", table([
+        { label: "Notice", value: (j) => j.noticeId }, { label: "Project", value: jobLink }, { label: "Agency", value: (j) => j.agency || "" },
+        { label: "Decision", value: (j) => el("span", { class: "pill " + (j.status === "passed" ? "" : j.stage === "find" ? "warning" : "success"), text: j.status === "passed" ? "Passed" : j.stage === "find" ? "Deciding" : "Pursued" }) },
+      ], jobs))];
+    },
+    bids(jobs) {
+      if (!jobs.length) return [noJobs("Bids the Estimator prices appear here.")];
+      const tone = { none: "warning", submitted: "info", won: "success", lost: "danger" };
+      const word = { none: "Pricing", submitted: "Submitted", won: "Won", lost: "Lost" };
+      return [card("Bids", table([
+        { label: "Job", value: jobLink }, { label: "Quotes in", value: (j) => j.trades.filter((t) => j.quotes.some((q) => q.trade === t)).length + " of " + j.trades.length + " trades" },
+        { label: "Estimate", num: true, value: (j) => money(j.estimateUsd) }, { label: "Bid", num: true, value: (j) => money(j.bidUsd) },
+        { label: "Status", value: (j) => el("span", { class: "pill " + (tone[j.bidStatus] || ""), text: word[j.bidStatus] || j.bidStatus }) },
+      ], jobs))];
+    },
+    projects(jobs) {
+      if (!jobs.length) return [noJobs("Jobs with a signed contract appear here.")];
+      return [card("Projects", table([
+        { label: "Job", value: jobLink }, { label: "Stage", value: (j) => stageLabel(j.stage) }, { label: "Contract", num: true, value: (j) => money(j.contractUsd) },
+        { label: "Change orders", num: true, value: (j) => money(j.changeOrdersUsd) }, { label: "Cost", num: true, value: (j) => money(j.costUsd) },
+        { label: "Problems", num: true, value: (j) => j.problems.filter((p) => p.resolved).length + " of " + j.problems.length + " solved" },
+        { label: "Days", num: true, value: (j) => (j.contractDays ? j.contractDays + " contract" : "") + (j.daysLate ? ", " + j.daysLate + " late" : "") }, { label: "Status", value: statusPill },
+      ], jobs))];
+    },
+    subs_vendors(jobs) {
+      const subs = subsFromJobs(jobs);
+      if (!subs.length) return [noJobs("Subcontractors that send quotes appear here.")];
+      return [card("Subcontractors", table([
+        { label: "Name", value: (s) => s.name }, { label: "Trades", value: (s) => s.trades.join(", ") }, { label: "Quotes", num: true, value: (s) => s.quotes },
+        { label: "Picked", num: true, value: (s) => s.selected }, { label: "Picked value", num: true, value: (s) => money(s.selectedUsd) }, { label: "Jobs", num: true, value: (s) => s.jobs },
+      ], subs))];
+    },
+    schedule(jobs) {
+      if (!jobs.length) return [noJobs("Schedules the Scheduler sets appear here.")];
+      return jobs.map((j) => card(null, el("div", { class: "card-h" }, jobLink(j), el("span", { class: "muted small" }, (j.contractDays ? j.contractDays + "-day contract" : ""))), gantt(j)));
+    },
+    money(jobs) {
+      const t = moneyTotals(jobs);
+      const out = [el("div", { class: "kpis" }, kpi("Contract value", money(t.contractUsd)), kpi("Invoiced", money(t.invoicedUsd)), kpi("Received", money(t.receivedUsd)),
+        kpi("Owed to you", money(t.owedToUsUsd)), kpi("Paid to subs", money(t.paidOutUsd)), kpi("Profit", money(t.profitUsd)))];
+      if (!jobs.length) { out.push(noJobs("Money in and out of each job appears here.")); return out; }
+      out.push(card("By job", table([
+        { label: "Job", value: jobLink }, { label: "Contract", num: true, value: (j) => money(j.contractUsd === null ? null : j.contractUsd + j.changeOrdersUsd) },
+        { label: "Cost", num: true, value: (j) => money(j.costUsd) }, { label: "Invoiced", num: true, value: (j) => money(j.invoicedUsd) },
+        { label: "Received", num: true, value: (j) => money(j.receivedUsd) }, { label: "Paid out", num: true, value: (j) => money(j.paidOutUsd) }, { label: "Profit", num: true, value: (j) => money(j.profitUsd) },
+      ], jobs)));
+      return out;
+    },
+    closeout(jobs) {
+      if (!jobs.length) return [noJobs("Jobs being billed and closed appear here.")];
+      return [card("Closeout", table([
+        { label: "Job", value: jobLink }, { label: "Stage", value: (j) => stageLabel(j.stage) }, { label: "Invoiced", num: true, value: (j) => money(j.invoicedUsd) },
+        { label: "Received", num: true, value: (j) => money(j.receivedUsd) }, { label: "Paid out", num: true, value: (j) => money(j.paidOutUsd) },
+        { label: "Cash profit", num: true, value: (j) => money(j.profitUsd) }, { label: "Days late", num: true, value: (j) => j.daysLate == null ? "" : j.daysLate }, { label: "Status", value: statusPill },
+      ], jobs))];
+    },
+  };
+
+  function gantt(j) {
+    const g = scheduleBars(j);
+    if (!g.bars.length) return el("p", { class: "muted small", text: "Not scheduled yet." });
+    const box = el("div", { class: "gantt" });
+    for (const b of g.bars) {
+      const bar = el("i", {});
+      bar.style.left = b.left + "%"; bar.style.width = b.width + "%";
+      box.append(el("span", { class: "strong", text: b.trade }), el("div", { class: "track", title: "Day " + b.startDay + " for " + b.days + " days" }, bar), el("span", { class: "num muted", text: "day " + b.startDay + "–" + (b.startDay + b.days) }));
+    }
+    return box;
+  }
+
+  function jobScreen(j) {
+    if (!j) return [el("div", {}, el("a", { class: "btn ghost", href: "#projects", text: "← Projects" })), empty("Job not found", "This run is no longer in the workspace.")];
+    const facts = [["Run", j.runId], ["Seed", j.seed], ["Notice", j.noticeId], ["Agency", j.agency], ["Estimate", money(j.estimateUsd)], ["Bid", money(j.bidUsd)],
+      ["Contract", money(j.contractUsd)], ["Change orders", money(j.changeOrdersUsd)], ["Cost", money(j.costUsd)], ["Invoiced", money(j.invoicedUsd)],
+      ["Received", money(j.receivedUsd)], ["Paid out", money(j.paidOutUsd)], ["Profit", money(j.profitUsd)], ["Days late", j.daysLate]].filter((f) => f[1] !== null && f[1] !== undefined && f[1] !== "");
+    const out = [
+      el("div", {}, el("a", { class: "btn ghost", href: "#projects", text: "← Projects" })),
+      el("div", { class: "pagehead" }, el("h1", { text: jobName(j) }), statusPill(j)),
+      card(null, stepper(j.stage), el("dl", { class: "facts" }, ...facts.map((f) => el("div", {}, el("dt", { class: "label", text: f[0] }), el("dd", { text: String(f[1]) }))))),
+    ];
+    if (j.tasks.length) out.push(card("Needs you", ...j.tasks.map((t) => el("div", { class: "task" }, el("span", { class: "pill info", text: gateLabel(t.gate) }), el("span", { class: "grow", text: splitSummary(t.summary).lead }), el("a", { class: "btn primary", href: "#settings/approvals", text: "Review" })))));
+    const grid = el("div", { class: "grid2" });
+    if (j.quotes.length) grid.append(card("Quotes", table([{ label: "Trade", value: (q) => q.trade }, { label: "Subcontractor", value: (q) => q.subcontractor }, { label: "Price", num: true, value: (q) => money(q.priceUsd) }, { label: "", value: (q) => q.selected ? el("span", { class: "pill success", text: "Picked" }) : "" }], j.quotes)));
+    if (j.schedule.length) grid.append(card("Schedule", gantt(j)));
+    if (j.problems.length || j.injected.length) grid.append(card("Problems on site", table([{ label: "Problem", value: (p) => problemLabel(p.id) }, { label: "Trade", value: (p) => p.trade || "" }, { label: "Outcome", value: (p) => el("span", { class: "pill " + (p.resolved ? "success" : "danger"), text: p.resolved ? (p.choice ? problemLabel(p.choice) : "Solved") : "Open" }) }, { label: "Cost", num: true, value: (p) => p.costUsd ? money(p.costUsd) : "" }, { label: "Days", num: true, value: (p) => p.days || "" }], j.problems.length ? j.problems : j.injected.map((id) => ({ id, trade: null, resolved: false, choice: null, costUsd: 0, days: 0 })))));
+    if (j.team.length) grid.append(card("Team", table([{ label: "Agent", value: (a) => roleLabel(a.role) + " #" + a.agentId }, { label: "Reports to", value: (a) => { const m = j.team.find((x) => x.agentId === a.managerId); return m ? roleLabel(m.role) : "Owner"; } }, { label: "Hired by", value: (a) => a.hiredBy }, { label: "Budget", num: true, value: (a) => a.budgetUsd == null ? "" : "$" + a.budgetUsd.toFixed(2) }], j.team)));
+    if (j.decisions.length) grid.append(card("Your decisions", table([{ label: "#", num: true, value: (d) => d.approvalId }, { label: "Decision", value: (d) => gateLabel(d.gate) }, { label: "Outcome", value: (d) => el("span", { class: "pill " + (d.status === "approved" ? "success" : d.status === "rejected" ? "danger" : "warning"), text: d.status.charAt(0).toUpperCase() + d.status.slice(1) }) }, { label: "Reason", value: (d) => d.reason || "" }], j.decisions)));
+    if (grid.childNodes.length) out.push(grid);
+    return out;
+  }
+
+  function renderWork() {
+    if (route.view === "settings") return;
+    const sec = $("v-" + route.view);
+    if (!sec) return;
+    const box = sec.querySelector(".body");
+    const jobs = Array.isArray(work.jobs) ? work.jobs : [];
+    let parts;
+    if (route.view === "job") parts = jobScreen(jobs.find((j) => j.runId === route.runId));
+    else parts = SCREENS[route.view](jobsForView(route.view, jobs));
+    if (work.error) parts.unshift(el("div", { class: "card error", text: work.error }));
+    box.replaceChildren(...parts);
+  }
 
   function renderApprovals() {
     const box = $("approvalsBody");
     box.replaceChildren();
-    $("count").hidden = pending.length === 0;
-    $("count").textContent = String(pending.length);
+    for (const id of ["count", "tabCount"]) { $(id).hidden = pending.length === 0; $(id).textContent = String(pending.length); }
+    if (signed && route.view === "overview") renderWork();
     if (pending.length === 0) {
       box.append(empty("Nothing is waiting for you", "When a running simulation needs a decision, it appears here."));
       return;
@@ -472,7 +687,7 @@ export const DASHBOARD_HTML = `<!doctype html>
     renderLog();
     box.replaceChildren(
       el("div", {}, el("button", { class: "btn ghost", text: "← All runs", onclick: showRuns })),
-      el("div", { class: "card" }, el("div", { class: "card-h" }, el("h2", { text: r.runId }), pill(r.outcome)), r.reason ? el("div", { class: "prose" }, el("p", { text: r.reason })) : null),
+      el("div", { class: "card" }, el("div", { class: "card-h" }, el("h2", { text: r.runId }), el("span", { class: "row" }, pill(r.outcome), el("a", { class: "link", href: routeHash({ view: "job", runId: r.runId }), text: "Open in workspace" }))), r.reason ? el("div", { class: "prose" }, el("p", { text: r.reason })) : null),
       stats.length ? el("div", { class: "kpis" }, ...stats) : null,
       el("div", { class: "card" }, el("h2", { text: "Approvals" }), el("div", { class: "table-wrap" }, approvals)),
       el("div", { class: "card" }, el("div", { class: "card-h" }, el("h2", { text: "Events" })), el("div", { class: "row" }, filter), log));
@@ -482,7 +697,7 @@ export const DASHBOARD_HTML = `<!doctype html>
     try {
       launch = await api("/api/launch");
       $("startTab").hidden = false;
-      renderStart();
+      if (route.view === "settings" && route.tab === "start") show(); else renderStart();
     } catch { $("startTab").hidden = true; launch = null; }
   }
 
@@ -551,9 +766,10 @@ export const DASHBOARD_HTML = `<!doctype html>
     if (es) { es.close(); es = null; }
     csrf = "";
     document.body.classList.add("signed-out");
-    $("nav").hidden = true; $("logout").hidden = true; $("who").textContent = ""; setConn("");
-    for (const id of TABS) $(id).hidden = true;
-    $("startTab").hidden = true; launch = null;
+    signed = false;
+    $("nav").hidden = true; $("settingsLink").hidden = true; $("logout").hidden = true; $("who").textContent = ""; setConn("");
+    document.querySelectorAll("main > section[data-screen]").forEach((sec) => { sec.hidden = true; });
+    $("startTab").hidden = true; launch = null; work = { jobs: [], stats: null };
     const err = el("div", { class: "error", role: "alert", text: message || "" });
     const field = (label, input) => el("label", { class: "field" }, el("span", { text: label }), input);
     const user = el("input", { type: "text", name: "username", autocomplete: "username", required: "" });
@@ -582,9 +798,9 @@ export const DASHBOARD_HTML = `<!doctype html>
     csrf = me.csrf;
     document.body.classList.remove("signed-out");
     $("login").hidden = true; $("login").replaceChildren();
-    $("nav").hidden = false; $("logout").hidden = false; $("who").textContent = me.username;
-    document.querySelectorAll("nav button").forEach((x) => { const on = x.dataset.tab === "approvals"; x.classList.toggle("on", on); if (on) x.setAttribute("aria-current", "page"); else x.removeAttribute("aria-current"); });
-    $("approvals").hidden = false;
+    signed = true;
+    $("nav").hidden = false; $("settingsLink").hidden = false; $("logout").hidden = false; $("who").textContent = me.username;
+    show();
     connect();
   }
 
@@ -606,7 +822,7 @@ export const DASHBOARD_HTML = `<!doctype html>
     es.addEventListener("error", () => { setConn("Disconnected", false); api("/api/me").catch(() => {}); });
     es.addEventListener("approval", (m) => { const r = JSON.parse(m.data); pending = pending.filter((p) => p.id !== r.id).concat(r); renderApprovals(); });
     es.addEventListener("decided", (m) => { const d = JSON.parse(m.data); pending = pending.filter((p) => p.id !== d.id); renderApprovals(); });
-    es.addEventListener("event", (m) => addEvent(JSON.parse(m.data)));
+    es.addEventListener("event", (m) => { addEvent(JSON.parse(m.data)); refreshWork(); });
     es.addEventListener("cleared", clearLog);
     es.addEventListener("launch", (m) => {
       if (!launch) return;
@@ -615,6 +831,7 @@ export const DASHBOARD_HTML = `<!doctype html>
       if (!$("start").hidden) renderStart();
     });
     loadLaunch();
+    loadWork();
   }
   fetch("/api/me", { credentials: "same-origin" })
     .then(async (res) => (res.ok ? signedIn(await res.json()) : showLogin()))

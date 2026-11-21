@@ -56,8 +56,30 @@ export interface WorkspaceProblem {
   days: number;
 }
 
+/** An agent the company hired during the run. */
+export interface WorkspaceAgent {
+  agentId: number;
+  role: string;
+  managerId: number | null;
+  budgetUsd: number | null;
+  /** Who hired it: "owner" for the President, otherwise the hiring agent. */
+  hiredBy: string;
+}
+
+/** An owner approval that was answered. */
+export interface WorkspaceDecision {
+  approvalId: number;
+  gate: Gate;
+  status: string;
+  reason: string | null;
+}
+
 export interface WorkspaceJob {
   runId: string;
+  /** The run's random seed, so the run can be replayed. */
+  seed: number | null;
+  /** The real-world problems the simulator injected into this run. */
+  injected: string[];
   noticeId: string | null;
   title: string | null;
   agency: string | null;
@@ -85,6 +107,10 @@ export interface WorkspaceJob {
   daysLate: number | null;
   /** Owner approvals asked for and not yet answered. */
   tasks: WorkspaceTask[];
+  /** The agents hired, in hiring order. */
+  team: WorkspaceAgent[];
+  /** Owner approvals already answered, in order. */
+  decisions: WorkspaceDecision[];
 }
 
 const num = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);
@@ -104,10 +130,11 @@ export function stageForGate(gate: Gate, current: WorkspaceStage): WorkspaceStag
 
 function emptyJob(runId: string): WorkspaceJob {
   return {
-    runId, noticeId: null, title: null, agency: null, stage: "find", status: "active", finished: false,
+    runId, seed: null, injected: [], noticeId: null, title: null, agency: null, stage: "find", status: "active", finished: false,
     estimateUsd: null, trades: [], quotes: [], bidUsd: null, bidStatus: "none",
     contractUsd: null, contractDays: null, changeOrdersUsd: 0, schedule: [], problems: [],
     costUsd: 0, invoicedUsd: 0, receivedUsd: 0, paidOutUsd: 0, profitUsd: null, daysLate: null, tasks: [],
+    team: [], decisions: [],
   };
 }
 
@@ -130,6 +157,10 @@ export function projectJob(runId: string, events: readonly LoggedEvent[], opport
     if (e.runId !== runId) continue;
     const p = e.payload;
     switch (e.type) {
+      case "run_started":
+        job.seed = typeof p.seed === "number" ? p.seed : null;
+        job.injected = list(p.problems).map(str).filter((x): x is string => x !== null);
+        break;
       case "opportunity_found":
         job.noticeId = str(p.noticeId);
         job.title = str(p.title);
@@ -249,9 +280,17 @@ export function projectJob(runId: string, events: readonly LoggedEvent[], opport
         break;
       }
       case "approval_decided":
-      case "agent_hired":
         if (p.approvalId !== undefined) pending.delete(num(p.approvalId));
+        job.decisions.push({ approvalId: num(p.approvalId), gate: p.gate as Gate, status: str(p.status) ?? "decided", reason: str(p.reason) });
         break;
+      case "agent_hired": {
+        if (p.approvalId !== undefined) pending.delete(num(p.approvalId));
+        const agentId = num(p.agentId);
+        if (!job.team.some((a) => a.agentId === agentId)) {
+          job.team.push({ agentId, role: str(p.role) ?? "agent", managerId: typeof p.managerId === "number" ? p.managerId : null, budgetUsd: typeof p.budgetUsd === "number" ? p.budgetUsd : null, hiredBy: e.actor });
+        }
+        break;
+      }
       case "run_finished":
         job.finished = true;
         pending.clear();

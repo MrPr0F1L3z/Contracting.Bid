@@ -14,7 +14,7 @@ A general contracting company run by AI agents. The agents fill the company's ro
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the code layout.
 
-The customer-facing website and workspace are a separate package in [`web/`](web/README.md). It is a front end on sample data. The dashboard now serves each run as workspace data (`GET /api/workspace`), but the site does not read it yet.
+The customer-facing website and workspace are a separate package in [`web/`](web/README.md). It is a front end on sample data. The owner dashboard uses the same workspace layout and fills it from run data (`GET /api/workspace`); the site itself does not read it yet.
 
 ## Requirements
 
@@ -110,6 +110,8 @@ Some approvals cover several items: all the subcontracts on a job, or a payment 
 
 ## Owner dashboard
 
+The dashboard is laid out as the Blueprint workspace of the customer site: Overview, Find work, Bids, Projects, Subs & vendors, Schedule, Money and Closeout in the sidebar, each filled from your runs (live runs as they go, plus the latest saved ones). Click a job for its stages, quotes, schedule, problems, hired team and your decisions. **Settings**, at the foot of the sidebar, holds the owner's tools as tabs: **Approvals**, **Live log**, **Past runs** and **Start a run**. Overview and the Settings link show how many approvals are waiting.
+
 First create your login. You need a password of at least 12 characters and an authenticator app on your phone (1Password, Google Authenticator, Authy or similar):
 
 ```sh
@@ -136,7 +138,7 @@ Five wrong sign-ins lock that name and that address out for 15 minutes. A sessio
 
 ### Keep the dashboard running
 
-`pnpm sim serve` keeps the dashboard up and adds a **Start a run** tab: pick `closeout`, `job`, `bid` or `hiring`, optionally a job, a seed and Force award, and start it. Its approvals show in the Approvals tab and its events in the Live log, and it is saved to the database. Runs go side by side, up to `MAX_PARALLEL_RUNS` at once (default 3), each with its own `RUN_BUDGET_USD` cap, so three runs can spend up to three times that. Each approval card and live log line names its run. Tick "Scripted models" for a free dry run. It needs `DATABASE_URL`.
+`pnpm sim serve` keeps the dashboard up and adds a **Start a run** tab to Settings: pick `closeout`, `job`, `bid` or `hiring`, optionally a job, a seed and Force award, and start it. Its approvals show in the Approvals tab and its events in the Live log, and it is saved to the database. Runs go side by side, up to `MAX_PARALLEL_RUNS` at once (default 3), each with its own `RUN_BUDGET_USD` cap, so three runs can spend up to three times that. Each approval card and live log line names its run. Tick "Scripted models" for a free dry run. It needs `DATABASE_URL`.
 
 If the service stops in the middle of a run (a restart, a crash, `docker compose stop`), the run is marked **interrupted** in the database and shows that way under Past runs, with the events it logged. It is not resumed. Runs started in a terminal are never marked.
 
