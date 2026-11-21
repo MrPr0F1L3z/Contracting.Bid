@@ -33,8 +33,8 @@ describe.skipIf(!url)("PgDb on a real Postgres (functional)", () => {
   it("migrates a database the container set up, then stores a run", async () => {
     const all = await loadMigrations(MIGRATIONS);
     await db.exec(all[0]!.sql);
-    expect((await pendingMigrations(db, all)).map((m) => m.name)).toEqual(["002_runs_users.sql", "003_run_started_by.sql"]);
-    expect(await migrate(db, all)).toEqual(["002_runs_users.sql", "003_run_started_by.sql"]);
+    expect((await pendingMigrations(db, all)).map((m) => m.name)).toEqual(["002_runs_users.sql", "003_run_started_by.sql", "004_stack_identity.sql"]);
+    expect(await migrate(db, all)).toEqual(["002_runs_users.sql", "003_run_started_by.sql", "004_stack_identity.sql"]);
     const runs = new RunStore(db);
     const log = await runs.start({ runId: "r1", seed: 2082671124, command: "bid", profile: "cloud", modelConfig: {} });
     log.append({ runId: "r1", simTime: 0, type: "run_started", actor: "owner", payload: { a: [1] } });

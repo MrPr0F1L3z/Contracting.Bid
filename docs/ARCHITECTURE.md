@@ -18,7 +18,9 @@ The full POC spec lives in the project's Claude Doc, "Contracting.Bid POC: Proce
 | `src/config/` | Environment config and the role list: who reports to whom, and which model family runs each role |
 | `src/sim/` | Seeded RNG, the simulated clock, the problem catalog, and the hiring chain (slice 1) |
 | `src/events/` | Append-only event log, in memory during a run |
-| `src/db/` | The `Db` interface over `pg`, the migration runner, and the Postgres stores for runs, events and logins |
+| `src/db/` | The `Db` interface over `pg`, the migration runner, the Postgres stores for runs, events and logins, and which stack a database belongs to |
+| `src/config/stack.ts` | The dev, staging and prod stacks (`APP_STACK`), and what prod refuses |
+| `src/deploy/` | The deploy pipeline behind `pnpm stack`: staging checks, the promotion gate, maintenance windows, the deploy ledger (see docs/STACKS.md) |
 | `src/budget/` | Per-call cost and budgets that warn at 80% and stop at 100% |
 | `src/approvals/` | The nine owner approval gates and the approval queue, with batch approvals that can be approved in full or item by item. `details.ts` builds each request's structured details (title, labelled facts, notes) so the dashboard can lay it out; the `summary` sentence stays for the terminal, event log and database |
 | `src/opportunities/` | The `OpportunitySource` interface, the stub source of made-up solicitations (two each at easy, moderate and complex), the seeded picker, and a coverage planner that spreads runs across complexity levels |

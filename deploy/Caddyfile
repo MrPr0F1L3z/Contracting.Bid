@@ -8,4 +8,9 @@
 		flush_interval -1
 	}
 	header -Server
+	# While a deploy restarts the dashboard, say so instead of showing a bare error.
+	handle_errors 502 503 504 {
+		header Retry-After 120
+		respond "Contracting.Bid is down for maintenance and will be back in a few minutes." 503
+	}
 }

@@ -28,6 +28,8 @@ import { newSeed } from "../sim/rng.js";
 import { STUB_BID_JOB, stubBidProviders } from "../sim/stubBid.js";
 import { stubHiringProviders } from "../sim/stubHiring.js";
 import { loadDotEnv } from "../config/dotenv.js";
+import { REFUSED_ON_STACK, allowsSimRuns, simRefusal, stackFromEnv, type Stack } from "../config/stack.js";
+import { claimDatabase, refuseOtherStack } from "../db/stackIdentity.js";
 import { RunLauncher, maxParallelRuns, type LaunchJob } from "../dashboard/launcher.js";
 import type { EventLog } from "../events/eventLog.js";
 import { isBiddableConstruction } from "../opportunities/pick.js";
@@ -193,6 +195,21 @@ export function formatReport(report: HiringReport): string[] {
   ];
 }
 
+/**
+ * What the database keeps about how a run was set up: the role models, plus
+ * whether it used scripted models or approved every gate on its own, and the
+ * build it ran on (APP_BUILD). The promotion gate reads these.
+ */
+export function runModelConfig(profile: Profile, args: Pick<SimArgs, "stub" | "autoApprove" | "forceAward">, env: Record<string, string | undefined>): Record<string, unknown> {
+  return {
+    ...roleModelsFor(profile),
+    ...(args.stub ? { stub: true } : {}),
+    ...(args.autoApprove ? { autoApprove: true } : {}),
+    ...(args.forceAward ? { forceAward: true } : {}),
+    ...(env.APP_BUILD ? { build: env.APP_BUILD } : {}),
+  };
+}
+
 /** Approves every gate. Only for simulations the owner opts into with --auto-approve. */
 export const autoApprover: Approver = async () => ({ approve: true, reason: "Auto-approved by the owner (--auto-approve)" });
 
@@ -288,6 +305,8 @@ export interface SimDeps {
   /** The database; left out, DATABASE_URL picks it, and null means none. */
   db?: Db | null;
   now?: () => Date;
+  /** The stack this process runs as (APP_STACK); main() sets it. */
+  stack?: Stack;
 }
 
 /** Saves a run's report as a file in the reports folder (runs without a database). */
@@ -331,19 +350,34 @@ export async function main(argv: string[], deps: SimDeps = {}): Promise<number> 
     return 0;
   }
   const env = deps.env ?? process.env;
+  let stack: Stack;
+  try {
+    stack = stackFromEnv(env);
+  } catch (err) {
+    out(err instanceof Error ? err.message : String(err));
+    return 2;
+  }
+  // Checked before the database is opened, so a refused command touches nothing.
+  const refusal = simRefusal(stack, argv[0]);
+  if (refusal) {
+    out(refusal);
+    return REFUSED_ON_STACK;
+  }
   const db = deps.db === undefined ? openDb(env) : deps.db;
   try {
     if (db) {
       try {
+        await refuseOtherStack(db, stack);
         const applied = await migrate(db, await loadMigrations(migrationsDir(env)));
         if (applied.length) out(`Database: applied ${applied.join(", ")}.`);
+        await claimDatabase(db, stack);
       } catch (err) {
         out(`Database: ${err instanceof Error ? err.message : String(err)}`);
-        if (!/^Migration /.test(err instanceof Error ? err.message : "")) out(databaseHint(env.DATABASE_URL));
+        if (!/^(Migration |This database belongs)/.test(err instanceof Error ? err.message : "")) out(databaseHint(env.DATABASE_URL));
         return 2;
       }
     }
-    return await runCommand(argv, { ...deps, db }, out);
+    return await runCommand(argv, { ...deps, db, stack }, out);
   } finally {
     if (deps.db === undefined) await db?.close();
   }
@@ -388,21 +422,25 @@ async function serve(args: SimArgs, env: Record<string, string | undefined>, por
   const before = await runs.interruptDashboardRuns("The dashboard service stopped during the run.");
   if (before.length) out(`Marked ${before.length} run(s) cut off by the last stop as interrupted: ${before.join(", ")}`);
   let server: DashboardServer;
-  const launcher = new RunLauncher(async (argv, runOut, by) => {
-    // Start a fresh live log only when no other run is writing to it.
-    if (launcher.state().running.length === 1) server.clearLive();
-    return runCommand(argv, { ...deps, dashboard: server, startedBy: `dashboard:${by}` }, runOut);
-  }, launchJobs(), deps.now, maxParallel);
+  const stack = deps.stack ?? "dev";
+  // Prod never starts sim runs, so its dashboard has no Start a run tab.
+  const launcher = allowsSimRuns(stack)
+    ? new RunLauncher(async (argv, runOut, by) => {
+        // Start a fresh live log only when no other run is writing to it.
+        if (launcher!.state().running.length === 1) server.clearLive();
+        return runCommand(argv, { ...deps, dashboard: server, startedBy: `dashboard:${by}` }, runOut);
+      }, launchJobs(), deps.now, maxParallel)
+    : undefined;
   try {
-    server = new DashboardServer({ ...(await dashboardOptions(env, args.out, port, undefined, deps.db)), launcher });
+    server = new DashboardServer({ ...(await dashboardOptions(env, args.out, port, undefined, deps.db)), stack, ...(launcher ? { launcher } : {}), ...(env.APP_BUILD ? { build: env.APP_BUILD } : {}) });
     out(`Owner dashboard: ${await server.start()}`);
   } catch (err) {
     out(err instanceof Error ? err.message : String(err));
     return 2;
   }
-  out("Start runs and answer approvals there. Press Ctrl+C to stop.");
+  out(launcher ? "Start runs and answer approvals there. Press Ctrl+C to stop." : `The ${stack} stack does not start sim runs. Press Ctrl+C to stop.`);
   await (deps.untilStopped ?? untilSignal)();
-  const running = launcher.state().running;
+  const running = launcher?.state().running ?? [];
   if (running.length) {
     const cut = await runs.interruptDashboardRuns("The dashboard service stopped during the run.");
     out(`Stopping during ${running.length} run(s); marked interrupted: ${cut.join(", ")}`);
@@ -445,7 +483,7 @@ async function runCommand(argv: string[], deps: SimDeps & { db: Db | null }, out
   if (args.command === "dashboard") {
     let server: DashboardServer;
     try {
-      server = new DashboardServer(await dashboardOptions(env, args.out, port, undefined, deps.db));
+      server = new DashboardServer({ ...(await dashboardOptions(env, args.out, port, undefined, deps.db)), ...(deps.stack ? { stack: deps.stack } : {}) });
       out(`Owner dashboard: ${await server.start()}`);
     } catch (err) {
       out(err instanceof Error ? err.message : String(err));
@@ -520,7 +558,7 @@ async function runCommand(argv: string[], deps: SimDeps & { db: Db | null }, out
   out(`Starting a ${profile} hiring run${args.stub ? " with scripted models" : ""}. Claude budget: $${config.runBudgetUsd}.`);
   try {
     const store = deps.db ? new RunStore(deps.db) : null;
-    const log = await store?.start({ runId: hiringRunId(profile, seed), seed, command: "hiring", profile, modelConfig: { ...roleModelsFor(profile) }, ...(deps.startedBy ? { startedBy: deps.startedBy } : {}) });
+    const log = await store?.start({ runId: hiringRunId(profile, seed), seed, command: "hiring", profile, modelConfig: runModelConfig(profile, args, deps.env ?? process.env), ...(deps.startedBy ? { startedBy: deps.startedBy } : {}) });
     const report = await runOnce(profile, seed, approver, deps.dashboard ? deps.dashboard.tee(log) : log);
     for (const line of formatReport(report)) out(line);
     if (store && log) await saveToDb(store, log, report, out);
@@ -585,7 +623,7 @@ async function runBid(
   try {
     const runId = `${args.command}-${profile}-${stamp}-${seed}`;
     const store = deps.db ? new RunStore(deps.db) : null;
-    const saved = await store?.start({ runId, seed, command: args.command, profile, modelConfig: { ...roleModelsFor(profile) }, ...(deps.startedBy ? { startedBy: deps.startedBy } : {}) });
+    const saved = await store?.start({ runId, seed, command: args.command, profile, modelConfig: runModelConfig(profile, { ...args, autoApprove: approver === autoApprover }, deps.env ?? process.env), ...(deps.startedBy ? { startedBy: deps.startedBy } : {}) });
     const log = dashboard ? dashboard.tee(saved) : saved;
     const options = {
       runId,

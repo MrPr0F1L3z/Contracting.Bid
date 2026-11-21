@@ -44,6 +44,25 @@ jobs:
         env:
           DATABASE_URL: postgres://test:test@localhost:5432/deploy
 
+  # Deploy check for the stacks (docs/STACKS.md): each stack's Compose file must resolve, with
+  # its own project, ports and APP_STACK, and Docker must get nothing from a stray .env.
+  stacks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Render dev, staging and prod
+        run: |
+          set -eu
+          docker compose config --format json > dev.json
+          APP_IMAGE=contracting-bid:ci APP_BUILD=ci docker compose -p contracting-staging --env-file deploy/stacks/staging.env config --format json > staging.json
+          APP_IMAGE=contracting-bid:ci APP_BUILD=ci docker compose -p contracting-prod --env-file deploy/stacks/prod.env config --format json > prod.json
+          check() { jq -e "$2" "$1" > /dev/null || { echo "$1 failed: $2"; exit 1; }; }
+          check dev.json '.services.dashboard.environment.APP_STACK == "dev" and .services.db.ports[0].published == "5432"'
+          check staging.json '.name == "contracting-staging" and .services.dashboard.environment.APP_STACK == "staging" and .services.dashboard.ports[0].published == "4200" and .services.db.ports[0].published == "5433"'
+          check prod.json '.name == "contracting-prod" and .services.dashboard.environment.APP_STACK == "prod" and .services.migrate.environment.APP_STACK == "prod" and .services.dashboard.ports[0].published == "4300" and .services.db.ports[0].published == "5434"'
+          check prod.json '.volumes["db-data"].name == "contracting-prod_db-data"'
+          check staging.json '.volumes["db-data"].name == "contracting-staging_db-data"'
+
   # The customer-facing site (web/). Front end only: no database, no model calls.
   web:
     runs-on: ubuntu-latest

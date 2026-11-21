@@ -16,7 +16,8 @@
     "check": "pnpm typecheck && pnpm test",
     "gpu": "tsc -p tsconfig.json && node dist/src/cli/vllm.js",
     "sim": "tsc -p tsconfig.json && node dist/src/cli/sim.js",
-    "db": "tsc -p tsconfig.json && node dist/src/cli/db.js"
+    "db": "tsc -p tsconfig.json && node dist/src/cli/db.js",
+    "stack": "tsc -p tsconfig.json && node dist/src/cli/stack.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.7.0",

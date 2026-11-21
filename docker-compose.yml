@@ -1,4 +1,9 @@
-# Runs on the owner's machine. vLLM is NOT in this file: it already runs on
+# Runs on the owner's machine. The same file runs all three stacks:
+#   dev:     docker compose up -d          (this checkout, sim data, the database you have today)
+#   staging: pnpm stack deploy staging     (a committed build, sim data, its own database)
+#   prod:    pnpm stack promote            (a build that passed staging, no sim data, its own database)
+# staging and prod get their ports and names from deploy/stacks/STACK.env; see docs/STACKS.md.
+# vLLM is NOT in this file: it already runs on
 # the host GPU on port 8001. Note: vllm_service binds 127.0.0.1, which a container cannot reach via host.docker.internal.
 # Nothing here uses network_mode: host, because Docker Desktop runs containers in a VM
 # where "host" means the VM, not this machine.
@@ -11,7 +16,8 @@ services:
       POSTGRES_DB: contracting
     ports:
       # Only this machine can reach the database, even when the dashboard is public.
-      - "127.0.0.1:5432:5432"
+      # dev 5432, staging 5433, prod 5434 (deploy/stacks/STACK.env).
+      - "127.0.0.1:${DB_PORT:-5432}:5432"
     volumes:
       - db-data:/var/lib/postgresql/data
     healthcheck:
@@ -24,9 +30,13 @@ services:
   # (pnpm sim) apply them the same way.
   migrate:
     build: .
+    # dev builds this checkout; staging and prod run the image built from one commit.
+    image: ${APP_IMAGE:-contracting-bid:dev}
     command: ["node", "dist/src/cli/db.js", "migrate"]
     environment:
       DATABASE_URL: postgres://contracting:contracting@db:5432/contracting
+      # The database records the first stack that opens it and refuses any other.
+      APP_STACK: ${APP_STACK:-dev}
     depends_on:
       db:
         condition: service_healthy
@@ -35,11 +45,13 @@ services:
   # run it with: docker compose --profile tools run --rm app
   app:
     build: .
+    image: ${APP_IMAGE:-contracting-bid:dev}
     profiles: ["tools"]
     env_file:
-      - path: .env
+      - path: ${SECRETS_FILE:-.env}
         required: false
     environment:
+      APP_STACK: ${APP_STACK:-dev}
       # Inside Compose the database's host is "db", not localhost.
       DATABASE_URL: postgres://contracting:contracting@db:5432/contracting
     depends_on:
@@ -52,17 +64,22 @@ services:
 
   # The owner dashboard as an always-on service (pnpm sim serve): start runs and
   # answer approvals from the page. Start it with: docker compose up -d dashboard
-  # It is published only on this machine's 127.0.0.1 (DASHBOARD_PORT, default 4100);
+  # It is published only on this machine's 127.0.0.1 (DASHBOARD_PORT: dev 4100, staging 4200, prod 4300);
   # Caddy reaches it over the Compose network.
   dashboard:
     build: .
+    image: ${APP_IMAGE:-contracting-bid:dev}
     command: ["node", "dist/src/cli/sim.js", "serve"]
     restart: unless-stopped
     env_file:
-      - path: .env
+      # staging and prod read the checkout's .env through SECRETS_FILE (the Claude API key).
+      - path: ${SECRETS_FILE:-.env}
         required: false
     environment:
       DATABASE_URL: postgres://contracting:contracting@db:5432/contracting
+      # prod: no Start a run tab, and every sim command refuses to run.
+      APP_STACK: ${APP_STACK:-dev}
+      APP_BUILD: ${APP_BUILD:-}
       DASHBOARD_HOST: 0.0.0.0
       DASHBOARD_PORT: "4100"
       DASHBOARD_IN_CONTAINER: "1"
@@ -76,6 +93,7 @@ services:
 
   # HTTPS in front of the owner dashboard, with a Let's Encrypt certificate for
   # DASHBOARD_DOMAIN. Start it with: docker compose --profile public up -d caddy
+  # Only one stack can hold ports 80 and 443; see docs/STACKS.md for pointing it at prod.
   # It needs ports 80 and 443 open to the internet for the certificate.
   caddy:
     image: caddy:2.10

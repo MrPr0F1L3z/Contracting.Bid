@@ -12,6 +12,8 @@ describe("parseLaunch", () => {
       .toEqual({ command: "closeout", job: "STUB-E02", seed: 7, forceAward: true, stub: true });
     expect(parseLaunch({ command: "bid", job: "", seed: "", forceAward: false, stub: false }, JOBS)).toEqual({ command: "bid" });
     expect(parseLaunch({ command: "job", seed: 4294967295 }, JOBS)).toEqual({ command: "job", seed: 4294967295 });
+    expect(parseLaunch({ command: "closeout", autoApprove: true }, JOBS)).toEqual({ command: "closeout", autoApprove: true });
+    expect(parseLaunch({ command: "bid", autoApprove: false }, JOBS)).toEqual({ command: "bid" });
   });
   it("names what is wrong", () => {
     expect(parseLaunch(null, JOBS)).toBe("Body must be a JSON object");
@@ -23,6 +25,8 @@ describe("parseLaunch", () => {
     expect(parseLaunch({ command: "bid", forceAward: true }, JOBS)).toBe("Force award is only for job and closeout runs");
     expect(parseLaunch({ command: "job", forceAward: "yes" }, JOBS)).toBe("forceAward must be true or false");
     expect(parseLaunch({ command: "job", stub: 1 }, JOBS)).toBe("stub must be true or false");
+    expect(parseLaunch({ command: "hiring", autoApprove: true }, JOBS)).toBe("Approve every gate is only for bid, job and closeout runs");
+    expect(parseLaunch({ command: "closeout", autoApprove: "yes" }, JOBS)).toBe("autoApprove must be true or false");
   });
 });
 
@@ -31,6 +35,7 @@ describe("launchArgv", () => {
     expect(launchArgv({ command: "hiring" })).toEqual(["hiring"]);
     expect(launchArgv({ command: "closeout", job: "STUB-E02", seed: 0, forceAward: true, stub: true }))
       .toEqual(["closeout", "--job", "STUB-E02", "--seed", "0", "--force-award", "--stub"]);
+    expect(launchArgv({ command: "closeout", autoApprove: true })).toEqual(["closeout", "--auto-approve"]);
   });
 });
 
